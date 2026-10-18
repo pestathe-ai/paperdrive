@@ -67,7 +67,9 @@ class AppState extends ChangeNotifier {
     mailImporter = MailImporter(ingestor);
     Session.user = settings.driveEnabled ? settings.driveAccount : null;
     // Chi arriva da una versione precedente senza categorie le riceve subito.
-    if (archive.activeTypes.isEmpty && addStarterEntities(archive) > 0) {
+    // e le regole predefinite non modificate si aggiornano.
+    if (archive.activeTypes.isEmpty || archive.types.keys.any((k) => k.startsWith('st-'))) {
+      addStarterEntities(archive);
       await storage.saveArchive(archive);
     }
     await storage.clearTmp();

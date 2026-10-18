@@ -648,4 +648,62 @@ PAGATO il 29/09/2025
       expect(detectIssuer('Avv. Laura Neri\nparcella'), 'Avv. Laura Neri');
     });
   });
+
+  group('estratto conto del condominio', () {
+    // Struttura di un vero estratto conto condominiale (dati di fantasia).
+    const ec = '''
+  STUDIO di AMM.NI IMM.RI di BIANCHI arch. Luca                                                          CONDOMINIO VIA PO 1
+  Piazza Garibaldi 19/b                                                                                  via Po 1
+  20099         SESTO SAN GIOVANNI                                     MI
+  Cod. fisc.       BNCLCU57E12I690Z                             P.I. 01234567890
+Professione esercitata ai sensi della legge 14/01/2013, n. 4 (G.U. n. 22 del 26/01/2013)
+
+    Estratto conto condomino                                                                             Egr. Sig.
+                                                                                                  12     ROSSI Mario
+    ordinaria 2025/2026
+
+    01/06/2025                -     31/05/2026
+Movimenti dal               01/06/2025            al         31/05/2026
+       31                         30/09/2025           RATA N. 1 ordinaria 2025/2026                     260,44
+                                                                                    Totale      1.465,70        1.205,58
+''';
+
+    test('tipo, periodo, emittente e data giusti', () {
+      final f = extractFacts(ec);
+      expect(f.kind, 'Estratto conto condominiale');
+      expect(f.period, 'ordinaria 2025/2026');
+      expect(f.issuer, 'Arch. Luca Bianchi');
+      expect(detectDate(ec), DateTime(2025, 6, 1));
+    });
+
+    test('nome generato da un programma e categoria Casa', () {
+      const name = '2013-01-14_AACJebECKw4DkMemKj0QWP4qQBY2_estratto_conto_ROSSI.pdf';
+      expect(meaningfulFileName(name), isNull);
+      final a = Archive.starter();
+      final d = Document(title: 'x', originalName: name, content: ec);
+      applyMatches(a, d);
+      expect(a.type(d.typeId)?.name, 'Casa');
+      final c = NamedEntity(name: detectIssuer(ec)!);
+      a.correspondents[c.id] = c;
+      d.correspondentId = c.id;
+      expect(autoTitle(a, d), 'Estratto conto condominiale ordinaria 2025/2026 - Arch. Luca Bianchi');
+    });
+
+    test('regole predefinite aggiornate se mai modificate', () {
+      final a = Archive.starter();
+      a.types['st-casa']!.pattern = 'vecchio';
+      addStarterEntities(a);
+      expect(a.types['st-casa']!.pattern, contains('condomino'));
+      a.types['st-casa']!
+        ..pattern = 'mio'
+        ..modified = 99;
+      addStarterEntities(a);
+      expect(a.types['st-casa']!.pattern, 'mio');
+    });
+
+    test('date di leggi ignorate, telefono no', () {
+      expect(detectDate('ai sensi della legge 14/01/2013 emessa il 05/03/2024'), DateTime(2024, 3, 5));
+      expect(detectDate('Tel. 039.320981 del 05/03/2024'), DateTime(2024, 3, 5));
+    });
+  });
 }

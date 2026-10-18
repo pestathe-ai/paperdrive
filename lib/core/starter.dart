@@ -29,7 +29,7 @@ const List<(String, String, String)> starterTypes = [
   ('st-auto', 'Auto e veicoli',
       '"bollo auto" "tassa automobilistica" revisione "carta di circolazione" libretto targa tagliando'),
   ('st-casa', 'Casa',
-      'condominio condominiale "spese condominiali" catasto "atto di compravendita" rogito affitto canone'),
+      'condominio condominiale condomino "estratto conto condomino" "spese condominiali" "amministrazione condominiale" "amministrazione immobili" "rata ordinaria" catasto "visura catastale" "atto di compravendita" rogito affitto canone'),
   ('st-scuola', 'Scuola e studio',
       'scuola iscrizione pagella "anno scolastico" università ateneo "certificato di laurea" esame'),
   ('st-lavoro', 'Lavoro',
@@ -55,7 +55,17 @@ int addStarterEntities(Archive a) {
   final existing = a.activeTypes.map((t) => normalize(t.name)).toSet();
   var added = 0;
   for (final (id, name, pattern) in starterTypes) {
-    if (a.types.containsKey(id) || existing.contains(normalize(name))) continue;
+    final current = a.types[id];
+    if (current != null) {
+      // Regole predefinite mai modificate: si aggiornano alla versione nuova.
+      if (current.modified <= 1 && current.pattern != pattern) {
+        current
+          ..pattern = pattern
+          ..modified = 1;
+      }
+      continue;
+    }
+    if (existing.contains(normalize(name))) continue;
     a.types[id] = NamedEntity(
       id: id,
       name: name,

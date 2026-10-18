@@ -23,6 +23,7 @@ const List<(String, List<String>)> documentKinds = [
   ('Multa', ['verbale di contestazione', 'codice della strada', 'violazione dell\'art']),
   ('Bollo auto', ['tassa automobilistica', 'bollo auto']),
   ('Busta paga', ['busta paga', 'cedolino', 'prospetto paga', 'netto in busta']),
+  ('Estratto conto condominiale', ['estratto conto condomino', 'estratto conto condominiale', 'rendiconto condominiale', 'riparto spese', 'rate condominiali']),
   ('Estratto conto', ['estratto conto', 'estratto di conto', 'rendiconto carta', 'documento di sintesi']),
   ('Bonifico', ['bonifico istantaneo', 'disposizione di bonifico', 'ordine di bonifico', 'esito bonifico', 'sepa credit transfer', 'bonifico']),
   ('Nota di credito', ['nota di credito']),
@@ -163,6 +164,18 @@ String? detectIssuer(String text) => _knownIssuer(text) ?? _professional(text) ?
 
 String? _professional(String text) {
   final head = text.length > 2500 ? text.substring(0, 2500) : text;
+  // "Giuliani arch. Guido", "ROSSI dott. Mario" -> "Arch. Guido Giuliani".
+  final inverted = RegExp(
+    r"\b([A-ZÀ-Ý][A-Za-zÀ-ÿ']{2,})[ \t]+(arch|geom|dott|ing|avv|rag|notaio)\.?[ \t]+([A-ZÀ-Ý][a-zà-ÿ]{2,})\b",
+    caseSensitive: false,
+  ).firstMatch(head);
+  if (inverted != null &&
+      RegExp(r'^[A-ZÀ-Ý]').hasMatch(inverted.group(1)!) &&
+      RegExp(r'^[A-ZÀ-Ý]').hasMatch(inverted.group(3)!)) {
+    final t = inverted.group(2)!.toLowerCase();
+    final title = t == 'notaio' ? 'Notaio' : '${t[0].toUpperCase()}${t.substring(1)}.';
+    return '$title ${_cleanName(inverted.group(3)!)} ${_cleanName(inverted.group(1)!)}';
+  }
   final re = RegExp(
     r"\b(Notaio(?: Dott\.?)?|Avv\.|Avvocato|Studio (?:Notarile|Legale|Medico|Dentistico|Tecnico|Commercialista)|Dott\.(?:ssa)?|Dr\.|Geom\.|Ing\.|Arch\.|Rag\.)[ \t]+([A-ZÀ-Ý][A-Za-zÀ-ÿ'.]+(?:[ \t][A-ZÀ-Ý][A-Za-zÀ-ÿ'.]+){0,3})",
   );
@@ -305,6 +318,16 @@ String? detectNumber(String text) {
   return n == null || n.isEmpty ? null : n;
 }
 
+/// Gestione o periodo (es. "ordinaria 2025/2026").
+String? detectPeriod(String text) {
+  final m = RegExp(
+    r'\b(ordinaria|straordinaria|riscaldamento|esercizio|gestione)\s+(?:anno\s+)?(\d{4}\s*[/-]\s*\d{2,4}|\d{4})\b',
+    caseSensitive: false,
+  ).firstMatch(text);
+  if (m == null) return null;
+  return '${m.group(1)!.toLowerCase()} ${m.group(2)!.replaceAll(' ', '')}';
+}
+
 /// Oggetto o causale (es. "Atto di acquisto", "affitto ottobre").
 String? detectSubject(String text) {
   final m = RegExp(
@@ -343,6 +366,7 @@ class DocFacts {
     this.number,
     this.municipality,
     this.subject,
+    this.period,
   });
   final String? kind;
   final String? issuer;
@@ -351,6 +375,7 @@ class DocFacts {
   final String? number;
   final String? municipality;
   final String? subject;
+  final String? period;
 
   /// Dettaglio da mettere nel nome, a seconda del tipo.
   String get details {
@@ -364,6 +389,10 @@ class DocFacts {
     if (municipality != null &&
         const {'Visura catastale', 'Planimetria catastale', 'Atto di compravendita', 'IMU', 'TARI'}.contains(kind)) {
       parts.add('Comune di $municipality');
+    }
+    if (period != null &&
+        const {'Estratto conto condominiale', 'Verbale di assemblea', 'Estratto conto'}.contains(kind)) {
+      parts.add(period!);
     }
     if (subject != null &&
         const {'Fattura', 'Nota di credito', 'Ricevuta di pagamento', 'Bonifico', 'Preventivo', 'Scontrino', 'Avviso di pagamento PagoPA', null}
@@ -387,6 +416,7 @@ class DocFacts {
         'Certificazione Unica',
         'Dichiarazione dei redditi',
         'Estratto conto',
+        'Estratto conto condominiale',
         'Referto',
         'Ricetta medica',
         'Certificato medico',
@@ -408,6 +438,7 @@ DocFacts extractFacts(String text) {
     number: detectNumber(text),
     municipality: detectMunicipality(text),
     subject: detectSubject(text),
+    period: detectPeriod(text),
   );
 }
 
@@ -421,6 +452,14 @@ final RegExp _genericName = RegExp(
   r'[\s_\-.()\d]*(?:at|alle|del)?[\s_\-.()\d]*$',
   caseSensitive: false,
 );
+
+bool _looksRandom(String t) {
+  if (t.length < 10) return false;
+  final hasDigit = RegExp(r'\d').hasMatch(t);
+  final hasLetter = RegExp(r'[A-Za-z]').hasMatch(t);
+  final caseChanges = RegExp(r'[a-z][A-Z]|[A-Z]{2}[a-z]').allMatches(t).length;
+  return (hasDigit && hasLetter) || caseChanges >= 2;
+}
 
 /// Il nome del file, ripulito, se è già descrittivo (es. "Visura catastale
 /// casa via Roma"); null se è generico (IMG_1234, scan001, documento…).
@@ -450,6 +489,10 @@ String? meaningfulFileName(String originalName) {
     return !abbreviated && w.length >= 4;
   }).toList();
   if (real.length < 2) return null;
+  // Nomi generati da un programma: contengono codici casuali (es. "AACJebECKw4Dk").
+  for (final token in base.split(RegExp(r'[\s_\-.]+'))) {
+    if (_looksRandom(token)) return null;
+  }
   // Codici tipo hash o numeri di pratica non sono nomi.
   if (RegExp(r'^[a-f0-9\- ]{12,}$', caseSensitive: false).hasMatch(base)) return null;
   // Spaziature dopo trattini/punti.

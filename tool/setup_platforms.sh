@@ -62,6 +62,12 @@ cat > android/app/proguard-rules.pro <<'RULES'
 -dontwarn com.google.mlkit.vision.text.devanagari.**
 -dontwarn com.google.mlkit.vision.text.japanese.**
 -dontwarn com.google.mlkit.vision.text.korean.**
+# Le librerie ML Kit e Play services non vanno ottimizzate: lo scanner di
+# documenti si rompe (NullPointerException all'avvio) se R8 le modifica.
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_** { *; }
+-keep class com.google.android.gms.vision.** { *; }
+-keep class com.google_mlkit_** { *; }
 RULES
 
 flutter pub get

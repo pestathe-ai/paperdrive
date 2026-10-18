@@ -31,7 +31,11 @@ DateTime? _make(int y, int m, int d, DateTime now) {
 }
 
 /// Tutte le date trovate nel testo, nell'ordine in cui compaiono.
-List<DateTime> findDates(String text, {DateTime? now}) {
+List<DateTime> findDates(String text, {DateTime? now}) =>
+    findDatesWithPos(text, now: now).map((e) => e.$2).toList();
+
+/// Come [findDates], con la posizione nel testo normalizzato.
+List<(int, DateTime)> findDatesWithPos(String text, {DateTime? now}) {
   final ref = now ?? DateTime.now();
   final t = normalize(text);
   final found = <(int, DateTime)>[];
@@ -72,14 +76,26 @@ List<DateTime> findDates(String text, {DateTime? now}) {
   }
 
   found.sort((a, b) => a.$1.compareTo(b.$1));
-  return found.map((e) => e.$2).toList();
+  return found;
 }
 
 /// La prima data plausibile del testo, o null.
 DateTime? detectDate(String text, {DateTime? now}) {
-  final all = findDates(text, now: now);
-  return all.isEmpty ? null : all.first;
+  final all = findDatesWithPos(text, now: now);
+  final t = normalize(text);
+  for (final (pos, d) in all) {
+    final from = pos - 35 < 0 ? 0 : pos - 35;
+    final before = t.substring(from, pos);
+    // Date di leggi, decreti, gazzette e nascite non sono la data del documento.
+    if (_ignoredContext.hasMatch(before)) continue;
+    return d;
+  }
+  return all.isEmpty ? null : all.first.$2;
 }
+
+final RegExp _ignoredContext = RegExp(
+  r'\b(legge|l\.|d\.?\s?p\.?\s?r\.?|d\.?\s?lgs\.?|decreto|g\.\s?u\.|gazzetta|nato|nata|nascita|circolare|regolamento|art\.)[^\n]{0,30}$',
+);
 
 /// Titolo suggerito dal testo: la prima riga significativa.
 String? suggestTitle(String text) {
