@@ -395,7 +395,7 @@ String? _publicBody(String text) {
   final patterns = <RegExp>[
     RegExp(r"\b(Comune di|Citt[àa] di|Regione|Provincia di|Citt[àa] Metropolitana di)\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'\- ]{2,30}?)(?=\s{2,}|\s*\n|\s*[,(\-]|$)"),
     RegExp(r"\b(ASL|ATS|ASST|ASP|AUSL|ULSS|AOU|ASUR|ASLT)\s+([A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9'\- ]{1,30}?)(?=\s{2,}|\s*\n|\s*[,(]|$)"),
-    RegExp(r"\b(Universit[àa] degli Studi di|Politecnico di|Istituto Comprensivo|Istituto Tecnico|Istituto Professionale|Liceo(?: Scientifico| Classico| Linguistico| Artistico)?|Scuola (?:Primaria|Secondaria|dell'Infanzia))\s+([A-ZÀ-Ý\"][A-Za-zÀ-ÿ'\". ]{1,40}?)(?=\s{2,}|\s*\n|\s*[,(\-]|$)"),
+    RegExp(r'''\b(Universit[àa] degli Studi di|Politecnico di|Istituto Comprensivo|Istituto Tecnico|Istituto Professionale|Liceo(?: Scientifico| Classico| Linguistico| Artistico)?|Scuola (?:Primaria|Secondaria|dell'Infanzia))\s+([A-ZÀ-Ý"][A-Za-zÀ-ÿ'". ]{1,40}?)(?=\s{2,}|\s*\n|\s*[,(\-]|$)'''),
     RegExp(r"\b(Ospedale|Policlinico|Azienda Ospedaliera|Fondazione|Casa di Cura|Poliambulatorio|Farmacia)\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'. ]{2,40}?)(?=\s{2,}|\s*\n|\s*[,(\-]|$)"),
   ];
   for (final re in patterns) {
