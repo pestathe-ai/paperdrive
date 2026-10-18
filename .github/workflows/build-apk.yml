@@ -57,6 +57,20 @@ jobs:
             exit 1
           fi
 
+      - name: Verifica PDF/A con veraPDF
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p build
+          PDFA_OUT=$PWD/build/pdfa_test.pdf flutter test test/pdfa_test.dart > /dev/null
+          docker run --rm -v $PWD/build:/data verapdf/cli --format text /data/pdfa_test.pdf 2>&1 | tee v.log
+          sudo apt-get install -y -qq poppler-utils > /dev/null 2>&1 || true
+          pdftotext build/pdfa_test.pdf - 2>&1 | head -5 | tee t.log
+          R=$(grep -E 'PASS|FAIL' v.log | head -3 | tr '\n' ' ')
+          T=$(tr '\n' ' ' < t.log)
+          echo "::notice title=pdfa::veraPDF: ${R:-nessun esito} | testo estratto: ${T}"
+          grep -q PASS v.log
+
       - name: Compila APK
         run: |
           set -o pipefail

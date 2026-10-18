@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../core/archive.dart';
+import '../core/mail_rules.dart';
 
 /// Impostazioni dell'app (restano sul telefono, non si sincronizzano).
 class Settings {
@@ -13,7 +14,16 @@ class Settings {
   bool autoAsn = false;
   bool ocrEnabled = true;
   bool skipDuplicates = true;
+  bool makeArchive = true;
   String? driveAccount;
+
+  /// Cartella Drive dell'archivio (la mia o una condivisa con me).
+  String? driveFolderId;
+  String? driveFolderOwner;
+  bool driveShared = false;
+
+  /// Posso modificare l'archivio condiviso (falso = sola lettura).
+  bool driveCanEdit = true;
   int? lastSync;
   String? lastSyncError;
 
@@ -23,7 +33,12 @@ class Settings {
         'autoAsn': autoAsn,
         'ocr': ocrEnabled,
         'dup': skipDuplicates,
+        'pdfa': makeArchive,
         'account': driveAccount,
+        'folder': driveFolderId,
+        'folderOwner': driveFolderOwner,
+        'shared': driveShared,
+        'canEdit': driveCanEdit,
         'lastSync': lastSync,
         'lastErr': lastSyncError,
       };
@@ -34,7 +49,12 @@ class Settings {
     ..autoAsn = j['autoAsn'] as bool? ?? false
     ..ocrEnabled = j['ocr'] as bool? ?? true
     ..skipDuplicates = j['dup'] as bool? ?? true
+    ..makeArchive = j['pdfa'] as bool? ?? true
     ..driveAccount = j['account'] as String?
+    ..driveFolderId = j['folder'] as String?
+    ..driveFolderOwner = j['folderOwner'] as String?
+    ..driveShared = j['shared'] as bool? ?? false
+    ..driveCanEdit = j['canEdit'] as bool? ?? true
     ..lastSync = (j['lastSync'] as num?)?.toInt()
     ..lastSyncError = j['lastErr'] as String?;
 }
@@ -59,6 +79,7 @@ class Storage {
   String get tmpDir => p.join(root.path, 'tmp');
   File get _indexFile => File(p.join(root.path, 'index.json'));
   File get _settingsFile => File(p.join(root.path, 'settings.json'));
+  File get _mailFile => File(p.join(root.path, 'mail.json'));
 
   File docFile(String fileName) => File(p.join(docsDir, fileName));
   File thumbFile(String docId) => File(p.join(thumbsDir, '$docId.png'));
@@ -101,6 +122,19 @@ class Storage {
 
   Future<void> saveSettings(Settings s) =>
       _writeAtomic(_settingsFile, jsonEncode(s.toJson()));
+
+  Future<MailConfig> loadMail() async {
+    try {
+      if (await _mailFile.exists()) {
+        final j = jsonDecode(await _mailFile.readAsString());
+        return MailConfig.fromJson((j as Map).cast<String, dynamic>());
+      }
+    } catch (_) {}
+    return MailConfig();
+  }
+
+  Future<void> saveMail(MailConfig c) =>
+      _writeAtomic(_mailFile, jsonEncode(c.toJson()));
 
   /// Nomi dei PDF presenti sul telefono.
   Future<Set<String>> localFileNames() async {

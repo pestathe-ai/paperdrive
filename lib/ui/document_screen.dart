@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cross_file/cross_file.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:material_ui/material_ui.dart';
 import 'package:pdfrx/pdfrx.dart' show PdfViewer;
 import 'package:share_plus/share_plus.dart';
@@ -23,32 +24,40 @@ class _DocumentScreenState extends State<DocumentScreen> {
   late final TextEditingController titleCtrl;
   late final TextEditingController contentCtrl;
   bool contentEditing = false;
+  late final AppState _app;
+  int? _openedAt;
 
   @override
   void initState() {
     super.initState();
-    final d = AppScope.read(context).archive.documents[widget.docId];
+    _app = AppScope.read(context);
+    final d = _app.archive.documents[widget.docId];
+    _openedAt = d?.modified;
     titleCtrl = TextEditingController(text: d?.title ?? '');
     contentCtrl = TextEditingController(text: d?.content ?? '');
   }
 
   @override
   void dispose() {
+    // Uscendo dal documento modificato partono i flussi "Documento modificato".
+    final d = _app.archive.documents[widget.docId];
+    if (d != null && !d.deleted && d.modified != _openedAt) _app.documentEdited(d);
     titleCtrl.dispose();
     contentCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> share(AppState app, Document d) async {
+  Future<void> share(AppState app, Document d, {bool archived = false}) async {
     try {
-      final f = await app.ensureFile(d);
+      final f = archived ? await app.ensureArchive(d) : await app.ensureFile(d);
       if (f == null) {
         if (mounted) showMessage(context, 'File non disponibile su questo telefono');
         return;
       }
       // Nome leggibile per chi riceve il file.
       final safe = d.title.replaceAll(RegExp(r'[^\w\s.-]', unicode: true), '_').trim();
-      final named = File(app.storage.tmpPath('${safe.isEmpty ? d.id : safe}.pdf'));
+      final named = File(app.storage.tmpPath(
+          '${safe.isEmpty ? d.id : safe}${archived ? ' (PDF-A)' : ''}.pdf'));
       await f.copy(named.path);
       await SharePlus.instance.share(ShareParams(files: [XFile(named.path)]));
     } catch (e) {
@@ -60,6 +69,32 @@ class _DocumentScreenState extends State<DocumentScreen> {
     switch (action) {
       case 'share':
         await share(app, d);
+      case 'share_arch':
+        await share(app, d, archived: true);
+      case 'link':
+        try {
+          showMessage(context, 'Creazione del link…');
+          final url = await app.createPublicLink(d, archived: d.hasArchive);
+          await Clipboard.setData(ClipboardData(text: url));
+          if (!mounted) return;
+          await SharePlus.instance.share(ShareParams(text: url));
+        } catch (e) {
+          if (mounted) showMessage(context, 'Link non creato: $e');
+        }
+      case 'unlink':
+        try {
+          await app.revokePublicLink(d);
+          if (mounted) showMessage(context, 'Link pubblico disattivato');
+        } catch (e) {
+          if (mounted) showMessage(context, 'Errore: $e');
+        }
+      case 'pdfa':
+        try {
+          await app.reprocess(d, updateText: false);
+          if (mounted) showMessage(context, 'Versione PDF/A creata');
+        } catch (e) {
+          if (mounted) showMessage(context, 'Errore: $e');
+        }
       case 'rules':
         final changed = app.reapplyRules([d]);
         if (mounted) showMessage(context, changed > 0 ? 'Regole applicate' : 'Nessuna regola corrisponde');
@@ -92,13 +127,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
       return Scaffold(appBar: AppBar(), body: const Center(child: Text('Documento non trovato')));
     }
     final isInbox = app.archive.inboxTags.any((t) => d.tagIds.contains(t.id));
+    final ro = app.readOnly;
     return DefaultTabController(
       length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Text(d.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
-            if (isInbox)
+            if (isInbox && !ro)
               IconButton(
                 tooltip: 'Segna come esaminato',
                 icon: const Icon(Icons.done_all),
@@ -112,11 +148,26 @@ class _DocumentScreenState extends State<DocumentScreen> {
             PopupMenuButton<String>(
               onSelected: (v) => menu(app, d, v),
               itemBuilder: (_) => [
-                const PopupMenuItem(value: 'rules', child: Text('Applica regole automatiche')),
-                const PopupMenuItem(value: 'ocr', child: Text('Rileggi il testo (OCR)')),
-                if (d.asn == null)
-                  const PopupMenuItem(value: 'asn', child: Text('Assegna ASN')),
-                const PopupMenuItem(value: 'trash', child: Text('Sposta nel cestino')),
+                if (d.hasArchive)
+                  const PopupMenuItem(value: 'share_arch', child: Text('Condividi versione PDF/A')),
+                if (app.settings.driveEnabled && !ro)
+                  PopupMenuItem(
+                    value: 'link',
+                    child: Text(d.shareLink == null ? 'Crea link pubblico' : 'Condividi link pubblico'),
+                  ),
+                if (d.shareLink != null && !ro)
+                  const PopupMenuItem(value: 'unlink', child: Text('Disattiva link pubblico')),
+                if (!ro) ...[
+                  const PopupMenuItem(value: 'rules', child: Text('Applica regole automatiche')),
+                  const PopupMenuItem(value: 'ocr', child: Text('Rileggi il testo (OCR)')),
+                  PopupMenuItem(
+                    value: 'pdfa',
+                    child: Text(d.hasArchive ? 'Ricrea versione PDF/A' : 'Crea versione PDF/A ricercabile'),
+                  ),
+                  if (d.asn == null)
+                    const PopupMenuItem(value: 'asn', child: Text('Assegna ASN')),
+                  const PopupMenuItem(value: 'trash', child: Text('Sposta nel cestino')),
+                ],
               ],
             ),
           ],
@@ -142,10 +193,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
               child: TabBarView(
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
-                  _details(app, d),
+                  IgnorePointer(ignoring: ro, child: _details(app, d)),
                   _Preview(doc: d),
                   _content(app, d),
-                  _notes(app, d),
+                  IgnorePointer(ignoring: ro, child: _notes(app, d)),
                 ],
               ),
             ),
@@ -288,6 +339,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _info('Pagine', '${d.pageCount}'),
         _info('Dimensione', '${(d.fileSize / 1024).toStringAsFixed(0)} KB'),
         _info('Checksum MD5', d.checksum),
+        _info('Provenienza', d.source.label),
+        if (d.owner != null) _info('Aggiunto da', d.owner!),
+        if (d.modifiedBy != null)
+          _info('Ultima modifica',
+              '${d.modifiedBy} · ${formatDate(DateTime.fromMillisecondsSinceEpoch(d.modified))}'),
+        _info('Versione PDF/A',
+            d.hasArchive ? 'Sì (${(d.archiveSize / 1024).toStringAsFixed(0)} KB, ricercabile)' : 'No'),
+        if (d.shareLink != null) _info('Link pubblico', d.shareLink!),
       ],
     );
   }
@@ -409,7 +468,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
                   style: Theme.of(context).textTheme.labelMedium,
                 ),
               ),
-              TextButton.icon(
+              if (!app.readOnly)
+                TextButton.icon(
                 icon: Icon(contentEditing ? Icons.check : Icons.edit_outlined),
                 label: Text(contentEditing ? 'Fatto' : 'Correggi'),
                 onPressed: () => setState(() {
@@ -489,7 +549,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 }
 
-/// Anteprima del PDF (scaricato da Drive se manca sul telefono).
+/// Anteprima del PDF (scaricato da Drive se manca sul telefono), con la
+/// scelta tra originale e versione archiviata.
 class _Preview extends StatefulWidget {
   const _Preview({required this.doc});
 
@@ -501,20 +562,30 @@ class _Preview extends StatefulWidget {
 
 class _PreviewState extends State<_Preview> with AutomaticKeepAliveClientMixin {
   Future<File?>? _file;
+  bool archived = false;
+  int? _rev;
 
   @override
   bool get wantKeepAlive => true;
 
+  void _load() {
+    final app = AppScope.read(context);
+    _rev = widget.doc.archiveRev;
+    _file = archived ? app.ensureArchive(widget.doc) : app.ensureFile(widget.doc);
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _file ??= AppScope.read(context).ensureFile(widget.doc);
+    if (_file == null) _load();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return FutureBuilder<File?>(
+    if (archived && _rev != widget.doc.archiveRev) _load();
+    final viewer = FutureBuilder<File?>(
+      key: ValueKey('$archived-${widget.doc.archiveRev}'),
       future: _file,
       builder: (c, snap) {
         if (snap.connectionState != ConnectionState.done) {
@@ -526,15 +597,33 @@ class _PreviewState extends State<_Preview> with AutomaticKeepAliveClientMixin {
             text: 'Il PDF non è su questo telefono e non è stato possibile scaricarlo.'
                 '${snap.hasError ? '\n${snap.error}' : ''}',
             action: OutlinedButton(
-              onPressed: () => setState(() {
-                _file = AppScope.read(context).ensureFile(widget.doc);
-              }),
+              onPressed: () => setState(_load),
               child: const Text('Riprova'),
             ),
           );
         }
-        return PdfViewer.file(snap.data!.path);
+        return PdfViewer.file(snap.data!.path, key: ValueKey(snap.data!.path));
       },
+    );
+    if (!widget.doc.hasArchive) return viewer;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('Originale')),
+              ButtonSegment(value: true, label: Text('PDF/A ricercabile')),
+            ],
+            selected: {archived},
+            onSelectionChanged: (v) => setState(() {
+              archived = v.first;
+              _load();
+            }),
+          ),
+        ),
+        Expanded(child: viewer),
+      ],
     );
   }
 }

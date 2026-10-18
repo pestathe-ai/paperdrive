@@ -69,7 +69,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
                 'I documenti e l\'indice vengono salvati in una cartella "Paperdrive" '
-                'del tuo Drive. L\'app vede solo i file che crea lei.',
+                'del tuo Drive, che puoi condividere con altre persone. Google mostrerà '
+                'l\'avviso "app non verificata": è normale per un\'app personale, tocca '
+                '"Avanzate" e poi "Vai a Paperdrive".',
               ),
             ),
             Padding(
@@ -92,6 +94,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   : 'Ultima sincronizzazione: ${formatDate(DateTime.fromMillisecondsSinceEpoch(s.lastSync!))} '
                       '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(s.lastSync!)).format(context)}'),
             ),
+            if (s.driveShared)
+              ListTile(
+                leading: const Icon(Icons.folder_shared_outlined),
+                title: Text('Archivio di ${s.driveFolderOwner ?? 'un\'altra persona'}'),
+                subtitle: Text(s.driveCanEdit ? 'Puoi modificare' : 'Sola lettura'),
+              ),
             if (s.lastSyncError != null)
               ListTile(
                 leading: Icon(Icons.error_outline, color: theme.colorScheme.error),
@@ -182,6 +190,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: s.ocrEnabled,
             onChanged: (v) {
               s.ocrEnabled = v;
+              app.saveSettings();
+            },
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.picture_as_pdf_outlined),
+            title: const Text('Crea versione PDF/A ricercabile'),
+            subtitle: const Text('Per scansioni e foto: PDF/A con il testo selezionabile, come Paperless'),
+            value: s.makeArchive,
+            onChanged: (v) {
+              s.makeArchive = v;
               app.saveSettings();
             },
           ),

@@ -1,7 +1,7 @@
 name: paperdrive
 description: Archivio documenti in stile Paperless-ngx, con OCR sul telefono e sincronizzazione su Google Drive.
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ^3.13.0
@@ -25,6 +25,11 @@ dependencies:
   googleapis: ^17.0.0
   http: ^1.6.0
   crypto: ^3.0.6
+  # Ultima versione su GitHub: quella su pub.dev non è compatibile con il pacchetto pdf (xml 7).
+  enough_mail:
+    git:
+      url: https://github.com/Enough-Software/enough_mail
+      ref: e8b665ace8a54dbebff011cbfb452195230ef333
 
 dev_dependencies:
   flutter_test:
@@ -33,3 +38,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/Lato-Regular.ttf
+    - assets/sRGB2014.icc

@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart' show md5;
-import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter/services.dart' show PlatformException, rootBundle;
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart'
     show InputImage, TextRecognizer, TextRecognitionScript;
@@ -13,36 +13,82 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfrx/pdfrx.dart' show PdfDocument, PdfImageExt;
 
 import '../core/models.dart';
+import 'pdfa.dart';
 import 'storage.dart';
 
-/// File pronto per l'archivio: un PDF e, se già noto, il testo delle pagine.
+export 'pdfa.dart' show OcrLine, OcrPage;
+
+/// File pronto per l'archivio: un PDF e, se già note, le immagini delle pagine.
 class StagedInput {
   StagedInput({
     required this.pdfPath,
     required this.originalName,
+    required this.source,
     this.ocrImages = const [],
   });
 
   final String pdfPath;
   final String originalName;
+  final DocSource source;
 
   /// Immagini delle pagine da leggere con l'OCR (es. dalla scansione).
   final List<String> ocrImages;
 }
 
-/// Trasforma scansioni, foto e PDF in documenti: OCR, testo, anteprima.
+/// Risultato dell'analisi: il documento e, se c'è stato OCR, le pagine lette.
+class Analysis {
+  Analysis(this.doc, this.ocrPages);
+  final Document doc;
+  final List<OcrPage> ocrPages;
+}
+
+/// Trasforma scansioni, foto, PDF ed email in documenti.
 class Ingestor {
   Ingestor(this.storage);
 
   final Storage storage;
   TextRecognizer? _recognizer;
+  pw.Font? _font;
+  Uint8List? _icc;
 
   static const int maxOcrPages = 40;
 
-  Future<String> ocrImage(String path) async {
+  Future<pw.Font> font() async =>
+      _font ??= pw.Font.ttf(await rootBundle.load('assets/Lato-Regular.ttf'));
+
+  Future<Uint8List> _iccProfile() async =>
+      _icc ??= (await rootBundle.load('assets/sRGB2014.icc')).buffer.asUint8List();
+
+  Future<(int, int)> _imageSize(String path) async {
+    final buffer = await ui.ImmutableBuffer.fromFilePath(path);
+    final desc = await ui.ImageDescriptor.encoded(buffer);
+    final size = (desc.width, desc.height);
+    desc.dispose();
+    buffer.dispose();
+    return size;
+  }
+
+  Future<OcrPage> ocrImage(String path) async {
     _recognizer ??= TextRecognizer(script: TextRecognitionScript.latin);
     final r = await _recognizer!.processImage(InputImage.fromFilePath(path));
-    return r.text;
+    var (w, h) = await _imageSize(path);
+    final lines = <OcrLine>[];
+    var maxRight = 0.0, maxBottom = 0.0;
+    for (final block in r.blocks) {
+      for (final line in block.lines) {
+        final b = line.boundingBox;
+        lines.add(OcrLine(line.text, b.left, b.top, b.width, b.height));
+        if (b.right > maxRight) maxRight = b.right;
+        if (b.bottom > maxBottom) maxBottom = b.bottom;
+      }
+    }
+    // Foto ruotate (EXIF): l'OCR lavora sull'immagine raddrizzata.
+    if (w != h && (maxRight > w * 1.05 || maxBottom > h * 1.05)) {
+      final t = w;
+      w = h;
+      h = t;
+    }
+    return OcrPage(imagePath: path, width: w, height: h, text: r.text, lines: lines);
   }
 
   /// Apre lo scanner di documenti di Google (ritaglio e raddrizzamento
@@ -69,6 +115,7 @@ class Ingestor {
         pdfPath: pdfPath,
         originalName:
             'Scansione ${formatDate(now)} ${now.hour.toString().padLeft(2, '0')}.${now.minute.toString().padLeft(2, '0')}',
+        source: DocSource.scan,
         ocrImages: images,
       );
     } on PlatformException catch (e) {
@@ -99,18 +146,53 @@ class Ingestor {
     return path;
   }
 
-  /// Prepara un file scelto dall'utente (PDF o immagine).
-  Future<StagedInput> stageFile(String name, Uint8List bytes) async {
+  /// Prepara un file (PDF o immagine) per l'archivio.
+  Future<StagedInput> stageFile(
+    String name,
+    Uint8List bytes, {
+    DocSource source = DocSource.file,
+  }) async {
     final ext = p.extension(name).toLowerCase();
     if (ext == '.pdf') {
       final path = storage.tmpPath('${newId()}.pdf');
       await File(path).writeAsBytes(bytes, flush: true);
-      return StagedInput(pdfPath: path, originalName: name);
+      return StagedInput(pdfPath: path, originalName: name, source: source);
     }
     final img = storage.tmpPath('${newId()}$ext');
     await File(img).writeAsBytes(bytes, flush: true);
     final pdf = await imagesToPdf([img]);
-    return StagedInput(pdfPath: pdf, originalName: name, ocrImages: [img]);
+    return StagedInput(pdfPath: pdf, originalName: name, source: source, ocrImages: [img]);
+  }
+
+  static String _clean(String s) => cleanPdfText(s);
+
+  /// Trasforma il testo di un'email in un PDF leggibile (font incorporato).
+  Future<StagedInput> textToPdf({
+    required String name,
+    required String title,
+    required List<(String, String)> header,
+    required String body,
+    DocSource source = DocSource.mail,
+  }) async {
+    final f = await font();
+    final doc = pw.Document(title: title, creator: 'Paperdrive', producer: 'Paperdrive');
+    final style = pw.TextStyle(font: f, fontSize: 10.5, lineSpacing: 2);
+    final paragraphs = _clean(body).split(RegExp(r'\n')).toList();
+    doc.addPage(pw.MultiPage(
+      pageFormat: pdfl.PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(48),
+      build: (_) => [
+        pw.Text(_clean(title), style: pw.TextStyle(font: f, fontSize: 16)),
+        pw.SizedBox(height: 8),
+        for (final (k, v) in header)
+          pw.Text('$k: ${_clean(v)}', style: pw.TextStyle(font: f, fontSize: 9, color: pdfl.PdfColors.grey700)),
+        pw.Divider(color: pdfl.PdfColors.grey400),
+        for (final para in paragraphs) pw.Text(para.isEmpty ? ' ' : para, style: style),
+      ],
+    ));
+    final path = storage.tmpPath('${newId()}.pdf');
+    await File(path).writeAsBytes(await doc.save(), flush: true);
+    return StagedInput(pdfPath: path, originalName: name, source: source);
   }
 
   /// Testo già presente nel PDF (PDF digitali).
@@ -132,15 +214,15 @@ class Ingestor {
   }
 
   /// Rende ogni pagina come immagine e la legge con l'OCR.
-  Future<String> ocrPdf(String path, {void Function(int, int)? progress}) async {
+  Future<List<OcrPage>> ocrPdf(String path, {void Function(int, int)? progress}) async {
     final d = await PdfDocument.openFile(path);
+    final pages = <OcrPage>[];
     try {
-      final b = StringBuffer();
       final n = d.pages.length.clamp(0, maxOcrPages);
       for (var i = 0; i < n; i++) {
         progress?.call(i + 1, n);
         final page = d.pages[i];
-        final scale = 1700 / page.width;
+        final scale = 1600 / page.width;
         final w = (page.width * scale).round();
         final h = (page.height * scale).round();
         final img = await page.render(
@@ -161,17 +243,16 @@ class Ingestor {
         } finally {
           img.dispose();
         }
-        b.writeln((await ocrImage(png)).trim());
-        b.writeln();
-        try {
-          await File(png).delete();
-        } catch (_) {}
+        pages.add(await ocrImage(png));
       }
-      return b.toString().trim();
+      return pages;
     } finally {
       await d.dispose();
     }
   }
+
+  static String joinText(List<OcrPage> pages) =>
+      pages.map((p) => p.text.trim()).where((t) => t.isNotEmpty).join('\n\n');
 
   /// Anteprima della prima pagina in PNG.
   Future<void> makeThumbnail(String pdfPath, String docId) async {
@@ -209,49 +290,81 @@ class Ingestor {
   static String checksumOf(Uint8List bytes) => md5.convert(bytes).toString();
 
   /// Legge il testo (dal PDF o con l'OCR) e crea il documento.
-  /// Il PDF viene copiato nell'archivio solo da [commit].
-  Future<Document> analyze(
+  Future<Analysis> analyze(
     StagedInput input, {
     required bool ocr,
     void Function(String)? status,
   }) async {
     final bytes = await File(input.pdfPath).readAsBytes();
     var (text, pages) = await pdfText(input.pdfPath);
+    var ocrPages = <OcrPage>[];
     if (ocr && text.replaceAll(RegExp(r'\s'), '').length < 30) {
       if (input.ocrImages.isNotEmpty) {
-        final b = StringBuffer();
         var i = 0;
         for (final img in input.ocrImages) {
           i++;
           status?.call('Lettura del testo: pagina $i di ${input.ocrImages.length}');
-          b.writeln((await ocrImage(img)).trim());
-          b.writeln();
+          ocrPages.add(await ocrImage(img));
         }
-        text = b.toString().trim();
       } else {
-        text = await ocrPdf(input.pdfPath,
+        ocrPages = await ocrPdf(input.pdfPath,
             progress: (i, n) => status?.call('Lettura del testo: pagina $i di $n'));
       }
+      text = joinText(ocrPages);
     }
     final base = p.basenameWithoutExtension(input.originalName);
-    return Document(
+    final doc = Document(
       title: base.isEmpty ? 'Documento' : base,
       content: text,
       originalName: input.originalName,
       pageCount: pages,
       checksum: checksumOf(bytes),
       fileSize: bytes.length,
+      source: input.source,
     );
+    return Analysis(doc, ocrPages);
   }
 
-  /// Copia il PDF nell'archivio e crea l'anteprima.
-  Future<void> commit(StagedInput input, Document doc) async {
+  /// Crea la versione archiviata: PDF/A con le immagini delle pagine e il
+  /// testo dell'OCR invisibile sopra, così si può cercare e copiare.
+  Future<String> buildArchivePdf(List<OcrPage> pages, {required String title}) async {
+    final bytes = await buildArchivePdfBytes(
+      pages,
+      title: title,
+      font: await font(),
+      iccProfile: await _iccProfile(),
+      author: Session.user ?? 'Paperdrive',
+    );
+    final path = storage.tmpPath('${newId()}.archive.pdf');
+    await File(path).writeAsBytes(bytes, flush: true);
+    return path;
+  }
+
+  /// Copia il PDF (ed eventualmente la versione archiviata) nell'archivio.
+  Future<void> commit(StagedInput input, Analysis a, {required bool makeArchive}) async {
+    final doc = a.doc;
     await File(input.pdfPath).copy(storage.docFile(doc.fileName).path);
+    if (makeArchive && a.ocrPages.isNotEmpty) {
+      try {
+        await saveArchive(doc, a.ocrPages);
+      } catch (_) {
+        // La versione archiviata è un di più: l'originale resta.
+      }
+    }
     try {
       await makeThumbnail(storage.docFile(doc.fileName).path, doc.id);
-    } catch (_) {
-      // L'anteprima non è indispensabile.
-    }
+    } catch (_) {}
+  }
+
+  /// Crea (o ricrea) la versione archiviata e aggiorna il documento.
+  Future<void> saveArchive(Document doc, List<OcrPage> pages) async {
+    final path = await buildArchivePdf(pages, title: doc.title);
+    final old = doc.hasArchive ? storage.docFile(doc.archiveFileName) : null;
+    doc.archiveRev += 1;
+    final target = storage.docFile(doc.archiveFileName);
+    await File(path).copy(target.path);
+    doc.archiveSize = await target.length();
+    if (old != null && await old.exists()) await old.delete();
   }
 
   Future<void> dispose() async {

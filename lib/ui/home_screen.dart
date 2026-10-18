@@ -5,9 +5,12 @@ import '../core/search.dart' show snippet;
 import '../state/app_state.dart';
 import 'document_screen.dart';
 import 'filter_sheet.dart';
+import 'mail_screen.dart';
 import 'manage_screen.dart';
 import 'settings_screen.dart';
+import 'sharing_screen.dart';
 import 'trash_screen.dart';
+import 'workflows_screen.dart';
 import 'widgets.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -167,7 +170,8 @@ class _HomeScreenState extends State<HomeScreen> {
         filter.from != null ||
         filter.to != null ||
         filter.inboxOnly ||
-        filter.untaggedOnly;
+        filter.untaggedOnly ||
+        filter.mineOnly;
 
     return PopScope(
       canPop: !selecting,
@@ -239,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-        floatingActionButton: selecting
+        floatingActionButton: selecting || app.readOnly
             ? null
             : FloatingActionButton.extended(
                 onPressed: app.busy == null ? showAddSheet : null,
@@ -248,6 +252,15 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
         body: Column(
           children: [
+            if (app.readOnly)
+              Material(
+                color: Theme.of(context).colorScheme.tertiaryContainer,
+                child: const ListTile(
+                  dense: true,
+                  leading: Icon(Icons.visibility_outlined),
+                  title: Text('Archivio condiviso in sola lettura'),
+                ),
+              ),
             if (app.busy != null || app.syncStatus != null)
               Material(
                 color: Theme.of(context).colorScheme.secondaryContainer,
@@ -421,7 +434,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ),
-      onLongPress: () => setState(() => isSel ? selected.remove(d.id) : selected.add(d.id)),
+      onLongPress: app.readOnly
+          ? null
+          : () => setState(() => isSel ? selected.remove(d.id) : selected.add(d.id)),
       onTap: () {
         if (selected.isNotEmpty) {
           setState(() => isSel ? selected.remove(d.id) : selected.add(d.id));
@@ -477,6 +492,27 @@ class _HomeScreenState extends State<HomeScreen> {
               leading: const Icon(Icons.view_list_outlined),
               title: const Text('Viste salvate e campi'),
               onTap: () => go(const ManageScreen(initialTab: 3)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_tree_outlined),
+              title: const Text('Flussi di lavoro'),
+              trailing: app.archive.activeWorkflows.isEmpty
+                  ? null
+                  : Text('${app.archive.activeWorkflows.length}'),
+              onTap: () => go(const WorkflowsScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.mail_outline),
+              title: const Text('Importazione da email'),
+              onTap: () => go(const MailScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.group_outlined),
+              title: const Text('Utenti e condivisione'),
+              subtitle: s.driveShared
+                  ? Text('Archivio di ${s.driveFolderOwner ?? 'un\'altra persona'}')
+                  : null,
+              onTap: () => go(const SharingScreen()),
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline),

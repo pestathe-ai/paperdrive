@@ -3,6 +3,7 @@
 library;
 
 import 'models.dart';
+import 'workflows.dart';
 
 class Archive {
   Archive({
@@ -12,7 +13,9 @@ class Archive {
     Map<String, NamedEntity>? types,
     Map<String, CustomField>? fields,
     Map<String, SavedView>? views,
-  })  : documents = documents ?? {},
+    Map<String, Workflow>? workflows,
+  })  : workflows = workflows ?? {},
+        documents = documents ?? {},
         tags = tags ?? {},
         correspondents = correspondents ?? {},
         types = types ?? {},
@@ -27,6 +30,7 @@ class Archive {
   final Map<String, NamedEntity> types;
   final Map<String, CustomField> fields;
   final Map<String, SavedView> views;
+  final Map<String, Workflow> workflows;
 
   static List<T> _alive<T extends Syncable>(Map<String, T> m) =>
       m.values.where((e) => !e.deleted).toList();
@@ -51,6 +55,11 @@ class Archive {
       _alive(fields)..sort((a, b) => _byName(a.name, b.name));
   List<SavedView> get activeViews =>
       _alive(views)..sort((a, b) => _byName(a.name, b.name));
+  List<Workflow> get activeWorkflows => _alive(workflows)
+    ..sort((a, b) {
+      final c = a.order.compareTo(b.order);
+      return c != 0 ? c : _byName(a.name, b.name);
+    });
 
   Tag? tag(String? id) {
     final t = id == null ? null : tags[id];
@@ -105,6 +114,7 @@ class Archive {
       ..notes = []
       ..tagIds = {}
       ..customFields = {}
+      ..shareLink = null
       ..touch();
   }
 
@@ -144,6 +154,7 @@ class Archive {
         'types': types.values.map((e) => e.toJson()).toList(),
         'fields': fields.values.map((e) => e.toJson()).toList(),
         'views': views.values.map((e) => e.toJson()).toList(),
+        'workflows': workflows.values.map((e) => e.toJson()).toList(),
       };
 
   static Map<String, T> _read<T extends Syncable>(
@@ -165,6 +176,7 @@ class Archive {
         types: _read(j['types'], NamedEntity.fromJson),
         fields: _read(j['fields'], CustomField.fromJson),
         views: _read(j['views'], SavedView.fromJson),
+        workflows: _read(j['workflows'], Workflow.fromJson),
       );
 
   /// Archivio iniziale con un tag "Da esaminare" (inbox), come Paperless.

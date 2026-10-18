@@ -53,6 +53,13 @@ Future<DocumentFilter?> showFilterSheet(BuildContext context, DocumentFilter ini
                 value: f.untaggedOnly,
                 onChanged: (v) => setState(() => f.untaggedOnly = v),
               ),
+              if (app.settings.driveShared || app.archive.activeDocuments.any((d) => d.owner != null && d.owner != app.settings.driveAccount))
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Solo aggiunti da me'),
+                  value: f.mineOnly,
+                  onChanged: (v) => setState(() => f.mineOnly = v),
+                ),
               const Divider(),
               Text('Tag (tutti quelli scelti)', style: Theme.of(c).textTheme.titleSmall),
               const SizedBox(height: 6),

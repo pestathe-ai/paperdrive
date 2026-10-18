@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:paperdrive/core/archive.dart';
 import 'package:paperdrive/core/dates.dart';
+import 'package:paperdrive/core/mail_rules.dart';
 import 'package:paperdrive/core/matching.dart';
 import 'package:paperdrive/core/models.dart';
 import 'package:paperdrive/core/search.dart';
 import 'package:paperdrive/core/sync_merge.dart';
 import 'package:paperdrive/core/text_utils.dart';
+import 'package:paperdrive/core/workflows.dart';
 
 Document doc(String title, String content, {Set<String>? tags}) =>
     Document(title: title, content: content, tagIds: tags);
@@ -232,10 +234,182 @@ void main() {
       final plan = planFiles(m,
           localFiles: {onlyLocal.fileName, gone.fileName},
           remoteFiles: {d1.fileName, gone.fileName});
-      expect(plan.upload.map((d) => d.id), [onlyLocal.id]);
-      expect(plan.download.map((d) => d.id), [d1.id]);
+      expect(plan.upload, [onlyLocal.fileName]);
+      expect(plan.download, [d1.fileName]);
       expect(plan.deleteRemote, [gone.fileName]);
       expect(plan.deleteLocal, [gone.fileName]);
+    });
+
+    test('versione archiviata: nuova si carica, vecchia si elimina', () {
+      final a = Archive();
+      final d = doc('x', '')..archiveRev = 2;
+      a.documents[d.id] = d;
+      expect(d.fileNames, ['${d.id}.pdf', '${d.id}.archive2.pdf']);
+      final plan = planFiles(a,
+          localFiles: {'${d.id}.pdf', '${d.id}.archive2.pdf'},
+          remoteFiles: {'${d.id}.pdf', '${d.id}.archive1.pdf', 'sconosciuto.pdf'});
+      expect(plan.upload, ['${d.id}.archive2.pdf']);
+      expect(plan.deleteRemote, ['${d.id}.archive1.pdf']);
+      expect(plan.download, isEmpty);
+      final ro = planFiles(a,
+          localFiles: {'${d.id}.pdf'},
+          remoteFiles: {'${d.id}.archive1.pdf'},
+          canWrite: false);
+      expect(ro.upload, isEmpty);
+      expect(ro.deleteRemote, isEmpty);
+    });
+
+    test('proprietario e autore delle modifiche', () {
+      Session.user = 'anna@example.com';
+      final d = doc('x', '');
+      expect(d.owner, 'anna@example.com');
+      Session.user = 'marco@example.com';
+      d.touch();
+      expect(d.modifiedBy, 'marco@example.com');
+      final back = Document.fromJson(
+          jsonDecode(jsonEncode(d.toJson())) as Map<String, dynamic>);
+      expect(back.owner, 'anna@example.com');
+      final a = Archive()..documents[d.id] = d;
+      expect(runFilter(a, DocumentFilter(mineOnly: true), SearchIndex()), isEmpty);
+      Session.user = 'anna@example.com';
+      expect(runFilter(a, DocumentFilter(mineOnly: true), SearchIndex()), [d]);
+      Session.user = null;
+    });
+  });
+
+  group('flussi di lavoro', () {
+    late Archive a;
+    late Tag inbox, fatture, pagato;
+    late NamedEntity enel, bolletta;
+    late CustomField importo;
+    setUp(() {
+      a = Archive();
+      inbox = Tag(name: 'Inbox', isInbox: true);
+      fatture = Tag(name: 'Fatture');
+      pagato = Tag(name: 'Pagato');
+      enel = NamedEntity(name: 'Enel');
+      bolletta = NamedEntity(name: 'Bolletta');
+      importo = CustomField(name: 'Importo', type: CustomFieldType.money);
+      for (final t in [inbox, fatture, pagato]) {
+        a.tags[t.id] = t;
+      }
+      a.correspondents[enel.id] = enel;
+      a.types[bolletta.id] = bolletta;
+      a.fields[importo.id] = importo;
+    });
+
+    test('glob', () {
+      expect(globToRegExp('*fattura*.pdf').hasMatch('Fattura_marzo.PDF'), isTrue);
+      expect(globToRegExp('scan_??.pdf').hasMatch('scan_01.pdf'), isTrue);
+      expect(globToRegExp('scan_??.pdf').hasMatch('scan_1.pdf'), isFalse);
+    });
+
+    test('condizioni e azioni', () {
+      final w = Workflow(
+        name: 'Bollette Enel',
+        sources: {DocSource.mail},
+        filenamePattern: '*.pdf',
+        algorithm: MatchAlgorithm.literal,
+        pattern: 'enel energia',
+        hasNotTags: {pagato.id},
+        titleTemplate: '{correspondent} - {document_type} {created_year}-{created_month} {campo:importo}',
+        addTags: {fatture.id},
+        setCorrespondent: enel.id,
+        setType: bolletta.id,
+        setFields: {importo.id: '0'},
+        assignAsn: true,
+        markReviewed: true,
+        addNote: 'Importata in automatico',
+      );
+      a.workflows[w.id] = w;
+      final d = Document(
+        title: 'x',
+        content: 'Enel Energia S.p.A. bolletta',
+        originalName: 'bolletta.pdf',
+        created: DateTime(2024, 3, 5),
+        tagIds: {inbox.id},
+        source: DocSource.mail,
+      );
+      a.documents[d.id] = d;
+
+      expect(applyWorkflows(a, d, WorkflowTrigger.added, source: DocSource.scan), isEmpty);
+      expect(applyWorkflows(a, d, WorkflowTrigger.updated), isEmpty);
+      expect(applyWorkflows(a, d, WorkflowTrigger.added, source: DocSource.mail),
+          ['Bollette Enel']);
+      expect(d.title, 'Enel - Bolletta 2024-03 0');
+      expect(d.tagIds, {fatture.id});
+      expect(d.correspondentId, enel.id);
+      expect(d.typeId, bolletta.id);
+      expect(d.asn, 1);
+      expect(d.notes.single.text, 'Importata in automatico');
+
+      // Con il tag "Pagato" la condizione non vale più.
+      d.tagIds.add(pagato.id);
+      expect(workflowMatches(w, d, WorkflowTrigger.added, source: DocSource.mail), isFalse);
+    });
+
+    test('titolo senza valori vuoti appesi', () {
+      final d = Document(title: 'Vecchio', originalName: 'scan 12.pdf', created: DateTime(2025, 1, 2));
+      expect(renderTitle('{correspondent} - {original_filename}', a, d), 'scan 12');
+      expect(renderTitle('{created} {title}', a, d), '2025-01-02 Vecchio');
+    });
+
+    test('ordine e JSON', () {
+      final w1 = Workflow(name: 'B', order: 2, addTags: {pagato.id});
+      final w2 = Workflow(name: 'A', order: 1, removeAllTags: true, triggers: {WorkflowTrigger.updated});
+      a.workflows[w1.id] = w1;
+      a.workflows[w2.id] = w2;
+      expect(a.activeWorkflows.map((w) => w.name), ['A', 'B']);
+      final back = Archive.fromJson(
+          jsonDecode(jsonEncode(a.toJson())) as Map<String, dynamic>);
+      final w2b = back.workflows[w2.id]!;
+      expect(w2b.triggers, {WorkflowTrigger.updated});
+      expect(w2b.removeAllTags, isTrue);
+      expect(back.workflows[w1.id]!.addTags, {pagato.id});
+    });
+  });
+
+  group('email', () {
+    final rule = MailRule(
+      name: 'Fatture',
+      accountId: 'a',
+      fromFilter: 'enel',
+      subjectFilter: 'bolletta',
+      attachmentFilter: '*.pdf',
+      maxAgeDays: 30,
+      onlyUnread: true,
+    );
+
+    test('filtri del messaggio', () {
+      final ok = MailInfo(from: 'noreply@enel.it', fromName: 'Enel Energia', subject: 'La tua Bolletta di marzo');
+      final no = MailInfo(from: 'amico@gmail.com', subject: 'Bolletta?');
+      expect(mailMatches(rule, ok), isTrue);
+      expect(mailMatches(rule, no), isFalse);
+    });
+
+    test('allegati', () {
+      expect(attachmentMatches(rule, 'Fattura.PDF'), isTrue);
+      expect(attachmentMatches(rule, 'logo.png'), isFalse);
+      expect(attachmentMatches(MailRule(name: 'x', accountId: 'a'), 'foto.jpg'), isTrue);
+      expect(attachmentMatches(MailRule(name: 'x', accountId: 'a'), 'firma.p7s'), isFalse);
+    });
+
+    test('criterio IMAP e mittente', () {
+      expect(imapCriteria(rule, DateTime(2026, 10, 18)), 'SINCE 18-Sep-2026 UNSEEN');
+      expect(senderName(MailInfo(from: 'info@poste.it', subject: '')), 'Poste');
+      expect(senderName(MailInfo(from: 'x@y.it', fromName: '"Mario Rossi"', subject: '')), 'Mario Rossi');
+    });
+
+    test('configurazione JSON', () {
+      final c = MailConfig();
+      final acc = MailAccount(name: 'Gmail', email: 'a@gmail.com', host: 'imap.gmail.com', username: 'a@gmail.com', password: 'pw');
+      c.accounts.add(acc);
+      c.rules.add(rule);
+      c.processed[rule.id] = {'1:5'};
+      final back = MailConfig.fromJson(jsonDecode(jsonEncode(c.toJson())) as Map<String, dynamic>);
+      expect(back.account(acc.id)!.host, 'imap.gmail.com');
+      expect(back.rules.single.after, MailAfter.markRead);
+      expect(back.processed[rule.id], {'1:5'});
     });
   });
 }

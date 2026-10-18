@@ -59,11 +59,12 @@ Map<String, T> _mergeMap<T extends Syncable>(
     types: _mergeMap(local.types, remote.types, r),
     fields: _mergeMap(local.fields, remote.fields, r),
     views: _mergeMap(local.views, remote.views, r),
+    workflows: _mergeMap(local.workflows, remote.workflows, r),
   );
   return (merged, r);
 }
 
-/// Piano dei file da spostare dopo l'unione.
+/// Piano dei file da spostare dopo l'unione (nomi di file).
 class FilePlan {
   FilePlan({
     required this.upload,
@@ -72,42 +73,62 @@ class FilePlan {
     required this.deleteLocal,
   });
 
-  /// Documenti presenti sul telefono ma non su Drive.
-  final List<Document> upload;
+  /// File presenti sul telefono ma non su Drive.
+  final List<String> upload;
 
-  /// Documenti presenti su Drive ma non sul telefono.
-  final List<Document> download;
+  /// File presenti su Drive ma non sul telefono.
+  final List<String> download;
 
-  /// Nomi di file su Drive da eliminare (documenti eliminati).
+  /// File su Drive da eliminare (documenti eliminati o versioni superate).
   final List<String> deleteRemote;
 
-  /// Nomi di file sul telefono da eliminare.
+  /// File sul telefono da eliminare.
   final List<String> deleteLocal;
 }
 
+/// Id del documento a cui appartiene un file (`<id>.pdf`, `<id>.archive3.pdf`).
+String docIdOfFile(String name) {
+  final dot = name.indexOf('.');
+  return dot < 0 ? name : name.substring(0, dot);
+}
+
 /// Decide quali PDF caricare, scaricare o eliminare.
+///
+/// I file di documenti sconosciuti (non ancora nell'indice) restano intatti.
 FilePlan planFiles(
   Archive merged, {
   required Set<String> localFiles,
   required Set<String> remoteFiles,
+  bool canWrite = true,
 }) {
-  final upload = <Document>[];
-  final download = <Document>[];
+  final upload = <String>[];
+  final download = <String>[];
   final deleteRemote = <String>[];
   final deleteLocal = <String>[];
+  final expected = <String>{};
   for (final d in merged.documents.values) {
-    final name = d.fileName;
-    final local = localFiles.contains(name);
-    final remote = remoteFiles.contains(name);
-    if (d.deleted) {
-      if (remote) deleteRemote.add(name);
-      if (local) deleteLocal.add(name);
-    } else if (local && !remote) {
-      upload.add(d);
-    } else if (remote && !local) {
-      download.add(d);
+    if (d.deleted) continue;
+    for (final name in d.fileNames) {
+      expected.add(name);
+      final local = localFiles.contains(name);
+      final remote = remoteFiles.contains(name);
+      if (local && !remote && canWrite) upload.add(name);
+      if (remote && !local) download.add(name);
     }
   }
+  bool known(String name) => merged.documents.containsKey(docIdOfFile(name));
+  for (final name in remoteFiles) {
+    if (canWrite && known(name) && !expected.contains(name)) {
+      deleteRemote.add(name);
+    }
+  }
+  for (final name in localFiles) {
+    if (known(name) && !expected.contains(name)) deleteLocal.add(name);
+  }
+  upload.sort();
+  download.sort();
+  deleteRemote.sort();
+  deleteLocal.sort();
   return FilePlan(
     upload: upload,
     download: download,

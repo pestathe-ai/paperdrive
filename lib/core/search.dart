@@ -159,6 +159,7 @@ bool passesFilter(Archive a, Document d, DocumentFilter f) {
   if (f.from != null && d.created.isBefore(f.from!)) return false;
   if (f.to != null && d.created.isAfter(f.to!)) return false;
   if (f.untaggedOnly && d.tagIds.any((t) => a.tag(t) != null)) return false;
+  if (f.mineOnly && Session.user != null && d.owner != Session.user) return false;
   if (f.inboxOnly) {
     final inbox = a.inboxTags.map((t) => t.id).toSet();
     if (!d.tagIds.any(inbox.contains)) return false;

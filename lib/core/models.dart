@@ -18,6 +18,22 @@ String newId() {
 
 int nowMs() => DateTime.now().millisecondsSinceEpoch;
 
+/// Chi sta usando l'app (email Google), per proprietario e autore modifiche.
+class Session {
+  static String? user;
+}
+
+/// Da dove arriva un documento.
+enum DocSource { scan, file, mail }
+
+extension DocSourceLabel on DocSource {
+  String get label => switch (this) {
+        DocSource.scan => 'Scansione',
+        DocSource.file => 'File importato',
+        DocSource.mail => 'Email',
+      };
+}
+
 /// Algoritmi di assegnazione automatica, come in Paperless-ngx.
 enum MatchAlgorithm { none, any, all, literal, regex, fuzzy, auto }
 
@@ -267,9 +283,16 @@ class Document with Syncable {
     this.trashedAt,
     this.checksum = '',
     this.fileSize = 0,
+    this.source = DocSource.file,
+    String? owner,
+    this.modifiedBy,
+    this.archiveRev = 0,
+    this.archiveSize = 0,
+    this.shareLink,
     int? modified,
     this.deleted = false,
   })  : id = id ?? newId(),
+        owner = owner ?? Session.user,
         created = created ?? DateTime.now(),
         added = added ?? nowMs(),
         tagIds = tagIds ?? <String>{},
@@ -307,6 +330,20 @@ class Document with Syncable {
   int? trashedAt;
   String checksum;
   int fileSize;
+  DocSource source;
+
+  /// Email di chi ha aggiunto il documento.
+  String? owner;
+
+  /// Email di chi l'ha modificato per ultimo.
+  String? modifiedBy;
+
+  /// Versione archiviata (PDF/A ricercabile): 0 se non esiste.
+  int archiveRev;
+  int archiveSize;
+
+  /// Link pubblico di Google Drive, se attivo.
+  String? shareLink;
   @override
   int modified;
 
@@ -317,7 +354,17 @@ class Document with Syncable {
 
   String get fileName => '$id.pdf';
 
-  void touch() => modified = nowMs();
+  bool get hasArchive => archiveRev > 0;
+
+  String get archiveFileName => '$id.archive$archiveRev.pdf';
+
+  /// Tutti i file di questo documento (originale ed eventuale archiviato).
+  List<String> get fileNames => [fileName, if (hasArchive) archiveFileName];
+
+  void touch() {
+    modified = nowMs();
+    modifiedBy = Session.user ?? modifiedBy;
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -337,6 +384,12 @@ class Document with Syncable {
         if (trashedAt != null) 'trashAt': trashedAt,
         'sum': checksum,
         'size': fileSize,
+        'src': source.name,
+        if (owner != null) 'owner': owner,
+        if (modifiedBy != null) 'modBy': modifiedBy,
+        if (archiveRev > 0) 'arch': archiveRev,
+        if (archiveSize > 0) 'archSize': archiveSize,
+        if (shareLink != null) 'link': shareLink,
         'mod': modified,
         if (deleted) 'del': true,
       };
@@ -362,12 +415,22 @@ class Document with Syncable {
         trashedAt: (j['trashAt'] as num?)?.toInt(),
         checksum: j['sum'] as String? ?? '',
         fileSize: (j['size'] as num?)?.toInt() ?? 0,
+        source: DocSource.values.firstWhere(
+          (x) => x.name == j['src'],
+          orElse: () => DocSource.file,
+        ),
+        modifiedBy: j['modBy'] as String?,
+        archiveRev: (j['arch'] as num?)?.toInt() ?? 0,
+        archiveSize: (j['archSize'] as num?)?.toInt() ?? 0,
+        shareLink: j['link'] as String?,
         modified: (j['mod'] as num?)?.toInt() ?? 0,
         deleted: j['del'] as bool? ?? false,
-      );
+      )..owner = j['owner'] as String?;
 }
 
 String _two(int v) => v.toString().padLeft(2, '0');
+
+String dateOnly(DateTime d) => _dateOnly(d);
 
 String _dateOnly(DateTime d) => '${d.year}-${_two(d.month)}-${_two(d.day)}';
 
@@ -404,6 +467,7 @@ class DocumentFilter {
     this.to,
     this.inboxOnly = false,
     this.untaggedOnly = false,
+    this.mineOnly = false,
     this.sort = SortField.created,
     this.descending = true,
   })  : tagIds = tagIds ?? <String>{},
@@ -418,6 +482,9 @@ class DocumentFilter {
   DateTime? to;
   bool inboxOnly;
   bool untaggedOnly;
+
+  /// Solo i documenti aggiunti da me (archivio condiviso).
+  bool mineOnly;
   SortField sort;
   bool descending;
 
@@ -430,7 +497,8 @@ class DocumentFilter {
       from == null &&
       to == null &&
       !inboxOnly &&
-      !untaggedOnly;
+      !untaggedOnly &&
+      !mineOnly;
 
   DocumentFilter copy() => DocumentFilter.fromJson(toJson());
 
@@ -444,6 +512,7 @@ class DocumentFilter {
         if (to != null) 'to': _dateOnly(to!),
         'inbox': inboxOnly,
         'untagged': untaggedOnly,
+        'mine': mineOnly,
         'sort': sort.name,
         'desc': descending,
       };
@@ -459,6 +528,7 @@ class DocumentFilter {
         to: j['to'] == null ? null : _parseDate(j['to'] as String),
         inboxOnly: j['inbox'] as bool? ?? false,
         untaggedOnly: j['untagged'] as bool? ?? false,
+        mineOnly: j['mine'] as bool? ?? false,
         sort: SortField.values.firstWhere(
           (s) => s.name == j['sort'],
           orElse: () => SortField.created,
