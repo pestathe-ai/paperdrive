@@ -17,4 +17,13 @@ for G in android/app/build.gradle.kts android/app/build.gradle; do
   fi
 done
 
+# ML Kit fa riferimento ai moduli OCR per cinese, giapponese, coreano e
+# devanagari, che non includiamo: R8 non deve fermarsi per questo.
+cat > android/app/proguard-rules.pro <<'RULES'
+-dontwarn com.google.mlkit.vision.text.chinese.**
+-dontwarn com.google.mlkit.vision.text.devanagari.**
+-dontwarn com.google.mlkit.vision.text.japanese.**
+-dontwarn com.google.mlkit.vision.text.korean.**
+RULES
+
 flutter pub get
