@@ -5,20 +5,19 @@ scansioni e PDF con OCR, tag, corrispondenti, tipi, ricerca nel testo e regole
 automatiche. Niente server da mantenere: tutto gira sul telefono e si
 sincronizza su **Google Drive**. L'APK viene compilato da GitHub Actions.
 
-## Funzioni (v0.1)
+## Funzioni
 
 - **Scansione** con lo scanner di documenti di Google (ritaglio, raddrizzamento, più pagine) e **importazione** di PDF e immagini.
 - **OCR sul telefono** (ML Kit, testo latino): i PDF digitali usano il loro testo, quelli scansionati vengono letti pagina per pagina.
-- **Data del documento** riconosciuta dal testo (05/03/2024, 2024-03-05, 12 marzo 2024, March 3, 2024…), con le altre date trovate proposte con un tocco.
-- **Tag** colorati, **corrispondenti**, **tipi di documento**, **campi personalizzati** (testo, numero, importo, data, sì/no, link), **note**, **numero d'archivio (ASN)**.
-- **Tag "Da esaminare"** (inbox) aggiunto a ogni nuovo documento.
-- **Regole automatiche** come Paperless: una parola, tutte le parole, testo esatto, espressione regolare, approssimata (tollera errori OCR) e **automatica** (impara dai documenti già classificati). Pulsante "Prova sui documenti" e "Applica ai documenti esistenti".
-- **Ricerca** nel testo, titolo, note e nomi; frasi tra virgolette, esclusioni (`-bozza`), `tag:casa`, `da:enel`, `tipo:fattura`, `asn:12`, `anno:2024`.
-- **Filtri** (tag inclusi/esclusi, corrispondente, tipo, intervallo di date, senza tag) e **viste salvate** mostrate in alto.
-- **Modifica multipla**: tieni premuto per selezionare, poi tag, corrispondente, tipo, regole, cestino.
-- **Cestino** con ripristino; duplicati saltati in automatico (MD5).
-- **Google Drive**: cartella `Paperdrive` con i PDF e l'indice `paperdrive-index.json`. Più telefoni possono usare lo stesso archivio: vince la modifica più recente.
-- Anteprima PDF, condivisione, tema chiaro/scuro.
+- **Versione archiviata PDF/A** (novità v0.2): per scansioni e foto viene creato un PDF/A-3b con il testo dell'OCR invisibile sopra l'immagine, quindi ricercabile e copiabile in qualsiasi lettore PDF. Validato con veraPDF in CI.
+- **Data del documento** riconosciuta dal testo, con le altre date trovate proposte con un tocco.
+- **Tag**, **corrispondenti**, **tipi di documento**, **campi personalizzati**, **note**, **numero d'archivio (ASN)**, tag **"Da esaminare"**.
+- **Regole automatiche** come Paperless: una parola, tutte, testo esatto, regex, approssimata e automatica (impara dai documenti già classificati).
+- **Flussi di lavoro** (novità v0.2): quando un documento viene *aggiunto* (da scansione, file o email) o *modificato*, se valgono le condizioni (nome file con `*`, testo, tag presenti/assenti, corrispondente, tipo) esegue le azioni: titolo con segnaposti (`{correspondent}`, `{created_year}`, `{campo:Importo}`…), aggiungi/togli tag, corrispondente, tipo, campi, ASN, segna esaminato, nota. Ordine trascinabile ed esecuzione sui documenti esistenti.
+- **Importazione da email** (novità v0.2): account IMAP (server trovato in automatico dall'indirizzo), regole con filtri su mittente, destinatario, oggetto, testo, nome allegato, età e non letti; importa allegati e/o il testo del messaggio come PDF; assegna tag, tipo, corrispondente (anche dal mittente); poi segna come letto, sposta o contrassegna. Ogni messaggio viene elaborato una volta sola.
+- **Più utenti** (novità v0.2): invita altre persone all'archivio (modifica o sola lettura) direttamente dall'app; chi è invitato sceglie "Usa un archivio condiviso con me". Ogni documento ricorda chi l'ha aggiunto e chi l'ha modificato; filtro "Solo aggiunti da me"; modalità sola lettura. **Link pubblici** a singoli documenti, revocabili.
+- **Ricerca** nel testo con frasi, esclusioni, `tag:`, `da:`, `tipo:`, `asn:`, `anno:`; **filtri**, **viste salvate**, **modifica multipla**, **cestino**, duplicati saltati.
+- **Google Drive**: cartella `Paperdrive` con i PDF e l'indice; più telefoni e più persone sullo stesso archivio, con unione delle modifiche.
 
 ## Collegare Google Drive (una volta sola, ~10 minuti)
 
@@ -30,7 +29,10 @@ Google richiede che ogni app che usa Drive sia registrata. Dal browser:
 4. **Credenziali → Crea credenziali → ID client OAuth → Android**:
    - Nome pacchetto: `dev.paperdrive.paperdrive`
    - Impronta SHA-1: `28:64:55:35:6C:77:EA:5D:30:D8:50:F4:CD:62:3D:38:89:CC:81:FD`
-5. Nell'app: **Impostazioni → Collega Google Drive**.
+5. Nell'app: **Impostazioni → Collega Google Drive**. Google mostrerà "app non verificata": tocca *Avanzate* → *Vai a Paperdrive*.
+
+Dalla v0.2 l'app chiede l'accesso completo a Drive (serve per gli archivi condivisi da altre persone): chi aveva collegato la v0.1 deve toccare **Ricollega**.
+Chi viene invitato a un archivio condiviso deve essere aggiunto anche lui tra gli **utenti di test** del progetto Google Cloud.
 
 Entrambi i valori si possono copiare anche da *Impostazioni → Dati per Google Cloud*.
 L'app usa solo il permesso `drive.file`: vede esclusivamente i file che ha creato.
@@ -38,10 +40,14 @@ L'app usa solo il permesso `drive.file`: vede esclusivamente i file che ha creat
 ## Limiti noti
 
 - Solo Android. OCR per alfabeto latino.
-- L'indice è un unico file JSON: pensato per centinaia/qualche migliaio di documenti.
-- Se due telefoni modificano **lo stesso** documento quasi nello stesso momento, vince l'ultima modifica.
-- Non ancora presenti rispetto a Paperless-ngx: importazione da email, cartella di importazione automatica, flussi di lavoro (workflow), percorsi di archiviazione, più utenti e permessi, condivisione via link, versione PDF/A archiviata.
-- La firma dell'APK è una chiave di sviluppo pubblica (vedi `tool/signing/`): adatta all'uso personale, non al Play Store.
+- La posta viene controllata all'apertura dell'app e con "Controlla ora", non in background ad app chiusa.
+- Gmail richiede una *password per le app*; gli account Outlook/Hotmail personali non accettano più la password via IMAP.
+- La password email è salvata nello spazio privato dell'app sul telefono (non cifrata a parte).
+- In un archivio condiviso i permessi li applica Google Drive: chi ha accesso vede tutti i documenti (niente documenti privati per singolo utente).
+- La versione PDF/A viene creata per scansioni, foto e PDF senza testo; per i PDF digitali si può crearla dal menu del documento.
+- L'indice è un unico file JSON: pensato per centinaia/qualche migliaio di documenti. Se due persone modificano lo stesso documento quasi insieme, vince l'ultima modifica.
+- Non presenti: percorsi di archiviazione personalizzati, cartella di importazione automatica, cronologia delle modifiche.
+- La firma dell'APK è una chiave di sviluppo pubblica (vedi `tool/signing/`).
 
 ## Sviluppo
 
