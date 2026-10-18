@@ -1,0 +1,35 @@
+name: paperdrive
+description: Archivio documenti in stile Paperless-ngx, con OCR sul telefono e sincronizzazione su Google Drive.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.0
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  material_ui: ^1.7.0
+  path_provider: ^2.1.6
+  path: ^1.9.0
+  file_picker: ^13.1.0
+  share_plus: ^13.3.1
+  cross_file: ^0.3.4
+  pdfrx: ^2.6.5
+  pdf: ^3.13.1
+  google_mlkit_document_scanner: ^0.6.1
+  google_mlkit_text_recognition: ^0.17.1
+  google_sign_in: ^7.2.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+  googleapis: ^17.0.0
+  http: ^1.6.0
+  crypto: ^3.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

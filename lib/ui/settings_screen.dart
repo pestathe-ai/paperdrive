@@ -1,0 +1,223 @@
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:material_ui/material_ui.dart';
+
+import '../core/models.dart';
+import '../state/app_state.dart';
+import 'widgets.dart';
+
+/// Dati da inserire su Google Cloud per collegare Drive.
+const String androidPackage = 'dev.paperdrive.paperdrive';
+const String signingSha1 = '28:64:55:35:6C:77:EA:5D:30:D8:50:F4:CD:62:3D:38:89:CC:81:FD';
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool connecting = false;
+
+  Future<void> connect(AppState app) async {
+    setState(() => connecting = true);
+    try {
+      await app.connectDrive();
+      if (mounted) showMessage(context, 'Google Drive collegato');
+    } catch (e) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Collegamento non riuscito'),
+          content: SingleChildScrollView(
+            child: Text(
+              '$e\n\n'
+              'Se l\'errore parla di configurazione o la finestra si chiude subito, '
+              'controlla su Google Cloud: API di Google Drive attivata, ID client Android '
+              'con nome pacchetto e SHA-1 qui sotto, e il tuo account tra gli utenti di test.',
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => connecting = false);
+    }
+  }
+
+  void copy(String label, String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    showMessage(context, '$label copiato');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final s = app.settings;
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Impostazioni')),
+      body: ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Text('Google Drive', style: theme.textTheme.titleMedium),
+          ),
+          if (!s.driveEnabled) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'I documenti e l\'indice vengono salvati in una cartella "Paperdrive" '
+                'del tuo Drive. L\'app vede solo i file che crea lei.',
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: FilledButton.icon(
+                onPressed: connecting ? null : () => connect(app),
+                icon: connecting
+                    ? const SizedBox(
+                        width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.add_to_drive),
+                label: const Text('Collega Google Drive'),
+              ),
+            ),
+          ] else ...[
+            ListTile(
+              leading: const Icon(Icons.account_circle_outlined),
+              title: Text(s.driveAccount ?? 'Account collegato'),
+              subtitle: Text(s.lastSync == null
+                  ? 'Mai sincronizzato'
+                  : 'Ultima sincronizzazione: ${formatDate(DateTime.fromMillisecondsSinceEpoch(s.lastSync!))} '
+                      '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(s.lastSync!)).format(context)}'),
+            ),
+            if (s.lastSyncError != null)
+              ListTile(
+                leading: Icon(Icons.error_outline, color: theme.colorScheme.error),
+                title: const Text('Ultimo errore'),
+                subtitle: Text(s.lastSyncError!),
+              ),
+            if (app.syncStatus != null)
+              ListTile(
+                leading: const SizedBox(
+                    width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+                title: Text(app.syncStatus!),
+              ),
+            SwitchListTile(
+              secondary: const Icon(Icons.sync),
+              title: const Text('Sincronizza in automatico'),
+              subtitle: const Text('All\'apertura e pochi secondi dopo ogni modifica'),
+              value: s.autoSync,
+              onChanged: (v) {
+                s.autoSync = v;
+                app.saveSettings();
+              },
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: app.syncing
+                        ? null
+                        : () async {
+                            try {
+                              final r = await app.syncNow();
+                              if (context.mounted) showMessage(context, r);
+                            } catch (e) {
+                              if (context.mounted) showMessage(context, 'Errore: $e');
+                            }
+                          },
+                    icon: const Icon(Icons.sync),
+                    label: const Text('Sincronizza ora'),
+                  ),
+                  OutlinedButton(
+                    onPressed: connecting ? null : () => connect(app),
+                    child: const Text('Ricollega'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      final ok = await confirm(context,
+                          title: 'Scollegare Google Drive?',
+                          message: 'I documenti restano sul telefono e su Drive.',
+                          ok: 'Scollega');
+                      if (ok) await app.disconnectDrive();
+                    },
+                    child: const Text('Scollega'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          ExpansionTile(
+            leading: const Icon(Icons.key_outlined),
+            title: const Text('Dati per Google Cloud'),
+            subtitle: const Text('Servono una volta per creare l\'accesso a Drive'),
+            children: [
+              ListTile(
+                title: const Text('Nome pacchetto'),
+                subtitle: const Text(androidPackage),
+                trailing: const Icon(Icons.copy),
+                onTap: () => copy('Nome pacchetto', androidPackage),
+              ),
+              ListTile(
+                title: const Text('Impronta SHA-1'),
+                subtitle: const Text(signingSha1),
+                trailing: const Icon(Icons.copy),
+                onTap: () => copy('SHA-1', signingSha1),
+              ),
+            ],
+          ),
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text('Archivio', style: theme.textTheme.titleMedium),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.text_snippet_outlined),
+            title: const Text('Leggi il testo (OCR)'),
+            subtitle: const Text('Sul telefono, senza inviare nulla a server esterni'),
+            value: s.ocrEnabled,
+            onChanged: (v) {
+              s.ocrEnabled = v;
+              app.saveSettings();
+            },
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.numbers),
+            title: const Text('Numero d\'archivio (ASN) automatico'),
+            subtitle: Text('Prossimo: ${app.archive.nextAsn()}'),
+            value: s.autoAsn,
+            onChanged: (v) {
+              s.autoAsn = v;
+              app.saveSettings();
+            },
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.copy_all_outlined),
+            title: const Text('Salta i duplicati'),
+            subtitle: const Text('Non importa di nuovo un file identico'),
+            value: s.skipDuplicates,
+            onChanged: (v) {
+              s.skipDuplicates = v;
+              app.saveSettings();
+            },
+          ),
+          const Divider(height: 32),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('Paperdrive'),
+            subtitle: Text(
+              '${app.archive.activeDocuments.length} documenti · '
+              '${app.archive.activeTags.length} tag · '
+              '${app.archive.activeCorrespondents.length} corrispondenti',
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
