@@ -65,6 +65,10 @@ class AppState extends ChangeNotifier {
     drive = DriveSync(storage);
     mailImporter = MailImporter(ingestor);
     Session.user = settings.driveEnabled ? settings.driveAccount : null;
+    // Chi arriva da una versione precedente senza categorie le riceve subito.
+    if (archive.activeTypes.isEmpty && addStarterEntities(archive) > 0) {
+      await storage.saveArchive(archive);
+    }
     await storage.clearTmp();
     ready = true;
     notifyListeners();
