@@ -282,6 +282,7 @@ class AppState extends ChangeNotifier {
       ));
     }
     applyMatches(archive, doc);
+    applyKindCategory(archive, doc);
     _guessCorrespondent(doc);
     final title = autoTitle(archive, doc);
     if (title != null) doc.title = title;
@@ -492,6 +493,7 @@ class AppState extends ChangeNotifier {
     for (final d in docs) {
       final before = d.toJson();
       applyMatches(archive, d, overwrite: overwrite);
+      applyKindCategory(archive, d);
       if (retitle) _guessCorrespondent(d);
       if (retitle) {
         final t = autoTitle(archive, d);

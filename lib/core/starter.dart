@@ -34,6 +34,10 @@ const List<(String, String, String)> starterTypes = [
       'scuola iscrizione pagella "anno scolastico" università ateneo "certificato di laurea" esame'),
   ('st-lavoro', 'Lavoro',
       '"lettera di assunzione" "contratto di lavoro" dimissioni curriculum inail'),
+  ('st-personali', 'Documenti personali',
+      '"carta d\'identita" "carta di identita" passaporto "tessera sanitaria" "certificato di residenza" "stato di famiglia" "permesso di soggiorno" anagrafe'),
+  ('st-viaggi', 'Viaggi',
+      '"carta d\'imbarco" "boarding pass" "e-ticket" "numero volo" "biglietto ferroviario" frecciarossa "conferma di prenotazione" "check-in" hotel'),
   ('st-garanzia', 'Garanzia e acquisti',
       'garanzia "numero d\'ordine" "conferma d\'ordine" spedizione "numero di serie" manuale'),
 ];

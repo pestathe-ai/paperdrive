@@ -21,11 +21,26 @@ String? autoTitle(Archive a, Document d) {
   }
   if (a.type(d.typeId) == null &&
       a.correspondent(d.correspondentId) == null &&
-      detectKind(d.content) == null) {
+      detectKind(d.content) == null &&
+      detectHeading(d.content) == null) {
     return null;
   }
   final t = renderTitle(a.config.titleTemplate, a, d);
   return t.isEmpty ? null : t;
+}
+
+/// Se il tipo specifico del documento ha una categoria (es. Visura catastale
+/// → Casa), la usa. Le categorie scelte da regole dell'utente hanno la
+/// precedenza; quelle predefinite (`st-…`) vengono corrette.
+bool applyKindCategory(Archive a, Document d) {
+  final k = detectKindEntry(d.content);
+  final cat = k?.category;
+  if (cat == null || a.type(cat) == null) return false;
+  final current = d.typeId;
+  if (current != null && a.type(current) != null && !current.startsWith('st-')) return false;
+  if (current == cat) return false;
+  d.typeId = cat;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
