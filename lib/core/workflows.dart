@@ -268,7 +268,7 @@ Map<String, String> placeholderValues(Archive a, Document d, {bool facts = false
     '{original_filename}': name,
     '{asn}': d.asn?.toString() ?? '',
     '{owner}': d.owner ?? '',
-    if (f != null) '{kind}': f.kind ?? f.heading ?? a.type(d.typeId)?.name ?? '',
+    if (f != null) '{kind}': f.label ?? a.type(d.typeId)?.name ?? '',
     if (f != null) '{details}': f.details,
     if (f != null) '{amount}': f.amountUseful ? f.amount! : '',
   };

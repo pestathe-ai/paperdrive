@@ -316,20 +316,6 @@ const List<(String, List<String>)> knownIssuers = [
 
 final RegExp _word = RegExp(r'[a-z0-9]');
 
-bool _hasPhrase(String normText, String phrase) {
-  final n = normalize(phrase);
-  var from = 0;
-  while (true) {
-    final i = normText.indexOf(n, from);
-    if (i < 0) return false;
-    final beforeOk = i == 0 || !_word.hasMatch(normText[i - 1]);
-    final end = i + n.length;
-    final afterOk = end >= normText.length || !_word.hasMatch(normText[end]);
-    if (beforeOk && afterOk) return true;
-    from = i + 1;
-  }
-}
-
 int _firstIndex(String normText, String phrase) {
   final n = normalize(phrase);
   var from = 0;
@@ -394,7 +380,7 @@ String? _publicBody(String text) {
   final head = text.split('\n').take(15).join('\n');
   final patterns = <RegExp>[
     RegExp(r"\b(Comune di|Citt[àa] di|Regione|Provincia di|Citt[àa] Metropolitana di)\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'\- ]{2,30}?)(?=\s{2,}|\s*\n|\s*[,(\-]|$)"),
-    RegExp(r"\b(ASL|ATS|ASST|ASP|AUSL|ULSS|AOU|ASUR|ASLT)\s+([A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9'\- ]{1,30}?)(?=\s{2,}|\s*\n|\s*[,(]|$)"),
+    RegExp(r"\b(ASL|ATS|ASST|ASP|AUSL|ULSS|AOU|ASUR|ASLT)\s+([A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9'\- ]{1,60}?)(?=\s{2,}|\s*\n|\s*[,(]|$)"),
     RegExp(r'''\b(Universit[àa] degli Studi di|Politecnico di|Istituto Comprensivo|Istituto Tecnico|Istituto Professionale|Liceo(?: Scientifico| Classico| Linguistico| Artistico)?|Scuola (?:Primaria|Secondaria|dell'Infanzia))\s+([A-ZÀ-Ý"][A-Za-zÀ-ÿ'". ]{1,40}?)(?=\s{2,}|\s*\n|\s*[,(\-]|$)'''),
     RegExp(r"\b(Ospedale|Policlinico|Azienda Ospedaliera|Fondazione|Casa di Cura|Poliambulatorio|Farmacia)\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'. ]{2,40}?)(?=\s{2,}|\s*\n|\s*[,(\-]|$)"),
   ];
@@ -660,6 +646,7 @@ class DocFacts {
     this.subject,
     this.period,
     this.heading,
+    this.weakKind = false,
   });
   final String? kind;
   final String? issuer;
@@ -672,6 +659,13 @@ class DocFacts {
 
   /// Intestazione, usata come titolo se il tipo non è riconosciuto.
   final String? heading;
+
+  /// Il tipo trovato è generico (es. "Comunicazione").
+  final bool weakKind;
+
+  /// Cosa mettere all'inizio del titolo: il tipo, o l'intestazione se il
+  /// tipo è generico o sconosciuto.
+  String? get label => (kind == null || weakKind) && heading != null ? heading : kind;
 
   /// Dettaglio da mettere nel nome, a seconda del tipo.
   String get details {
@@ -715,7 +709,9 @@ class DocFacts {
 }
 
 DocFacts extractFacts(String text) {
-  final kind = detectKind(text);
+  final entry = detectKindEntry(text);
+  final kind = entry?.name;
+  final weak = entry?.weak ?? false;
   return DocFacts(
     kind: kind,
     issuer: detectIssuer(text),
@@ -725,7 +721,8 @@ DocFacts extractFacts(String text) {
     municipality: detectMunicipality(text),
     subject: detectSubject(text),
     period: detectPeriod(text),
-    heading: kind == null ? detectHeading(text) : null,
+    heading: kind == null || weak ? detectHeading(text) : null,
+    weakKind: weak,
   );
 }
 
