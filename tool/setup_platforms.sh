@@ -12,6 +12,10 @@ grep -q 'android.permission.INTERNET' "$MANIFEST" || \
 sed -i 's#android:label="paperdrive"#android:label="Paperdrive"#' "$MANIFEST"
 
 # "Condividi" e "Apri con": codice nativo e filtri nel manifest.
+ACT=$(find android/app/src/main -name 'MainActivity.*' | head -1)
+echo "MainActivity: $ACT"
+rm -f "$ACT"
+mkdir -p android/app/src/main/kotlin/dev/paperdrive/paperdrive
 cp tool/android/MainActivity.kt android/app/src/main/kotlin/dev/paperdrive/paperdrive/MainActivity.kt
 python3 - "$MANIFEST" <<'PY'
 import sys
@@ -43,7 +47,7 @@ if 'android.intent.action.SEND"' not in s:
     s = s[:i] + filters + '        ' + s[i:]
 open(p, 'w').write(s)
 PY
-grep -c 'intent.action.SEND' "$MANIFEST"
+grep -c 'intent.action.SEND' "$MANIFEST" || { cat "$MANIFEST"; exit 1; }
 
 for G in android/app/build.gradle.kts android/app/build.gradle; do
   if [ -f "$G" ]; then
