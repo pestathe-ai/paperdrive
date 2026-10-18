@@ -4,8 +4,8 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 pubspec.lock
-android/
-ios/
+/android/
+/ios/
 *.iml
 .idea/
 .vscode/
