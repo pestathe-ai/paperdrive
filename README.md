@@ -35,7 +35,7 @@ Dalla v0.2 l'app chiede l'accesso completo a Drive (serve per gli archivi condiv
 Chi viene invitato a un archivio condiviso deve essere aggiunto anche lui tra gli **utenti di test** del progetto Google Cloud.
 
 Entrambi i valori si possono copiare anche da *Impostazioni → Dati per Google Cloud*.
-L'app usa solo il permesso `drive.file`: vede esclusivamente i file che ha creato.
+L'app usa la cartella `Paperdrive` (e quelle che altre persone condividono con te) e non tocca il resto del Drive.
 
 ## Limiti noti
 
