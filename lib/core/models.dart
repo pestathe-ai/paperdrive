@@ -696,6 +696,7 @@ class ArchiveConfig {
     this.pathTemplate = defaultPathTemplate,
     this.titleTemplate = defaultTitleTemplate,
     this.autoTitle = true,
+    this.keepFileName = true,
     this.organizeDrive = true,
     this.barcodeSplit = true,
     this.separatorBarcode = 'PATCHT',
@@ -705,7 +706,8 @@ class ArchiveConfig {
   }) : modified = modified ?? 0;
 
   static const String defaultPathTemplate = '{document_type}/{created_year}/{created} {title}';
-  static const String defaultTitleTemplate =
+  static const String defaultTitleTemplate = '{kind} {details} {amount} - {correspondent}';
+  static const String oldTitleTemplate =
       '{document_type} {correspondent} {created_month}-{created_year}';
 
   /// Cartelle e nome dei file su Drive.
@@ -714,6 +716,9 @@ class ArchiveConfig {
   /// Titolo automatico (usato quando si conoscono tipo o corrispondente).
   String titleTemplate;
   bool autoTitle;
+
+  /// Se il file ha già un nome descrittivo lo tiene.
+  bool keepFileName;
 
   /// Organizza i file su Drive in cartelle (altrimenti tutti nella cartella principale).
   bool organizeDrive;
@@ -731,6 +736,7 @@ class ArchiveConfig {
         'path': pathTemplate,
         'title': titleTemplate,
         'autoTitle': autoTitle,
+        'keepName': keepFileName,
         'organize': organizeDrive,
         'split': barcodeSplit,
         'sep': separatorBarcode,
@@ -741,8 +747,12 @@ class ArchiveConfig {
 
   factory ArchiveConfig.fromJson(Map<String, dynamic> j) => ArchiveConfig(
         pathTemplate: j['path'] as String? ?? defaultPathTemplate,
-        titleTemplate: j['title'] as String? ?? defaultTitleTemplate,
+        titleTemplate: switch (j['title'] as String?) {
+          null || oldTitleTemplate => defaultTitleTemplate,
+          final t => t,
+        },
         autoTitle: j['autoTitle'] as bool? ?? true,
+        keepFileName: j['keepName'] as bool? ?? true,
         organizeDrive: j['organize'] as bool? ?? true,
         barcodeSplit: j['split'] as bool? ?? true,
         separatorBarcode: j['sep'] as String? ?? 'PATCHT',

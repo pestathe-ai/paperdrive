@@ -3,6 +3,7 @@
 library;
 
 import 'archive.dart';
+import 'extract.dart';
 import 'matching.dart' show cosine, matchText, termVector;
 import 'models.dart';
 import 'workflows.dart';
@@ -10,10 +11,17 @@ import 'workflows.dart';
 // ---------------------------------------------------------------------------
 // Titolo automatico
 
-/// Titolo dal modello dell'archivio, se si conoscono tipo o corrispondente.
+/// Titolo automatico: il nome del file se è già descrittivo, altrimenti
+/// costruito dal modello (tipo specifico, dettagli, importo, ente).
 String? autoTitle(Archive a, Document d) {
   if (!a.config.autoTitle) return null;
-  if (a.type(d.typeId) == null && a.correspondent(d.correspondentId) == null) {
+  if (a.config.keepFileName) {
+    final name = meaningfulFileName(d.originalName);
+    if (name != null) return name;
+  }
+  if (a.type(d.typeId) == null &&
+      a.correspondent(d.correspondentId) == null &&
+      detectKind(d.content) == null) {
     return null;
   }
   final t = renderTitle(a.config.titleTemplate, a, d);

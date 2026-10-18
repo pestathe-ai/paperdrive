@@ -130,10 +130,20 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Rinomina in automatico'),
-              subtitle: const Text('Quando riconosce la categoria o il corrispondente'),
+              subtitle: const Text('Legge che documento è, chi lo emette, importo e dettagli'),
               value: c.autoTitle,
               onChanged: (v) {
                 c.autoTitle = v;
+                app.saveConfig();
+              },
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Tieni il nome del file se è già descrittivo'),
+              subtitle: const Text('Es. "Visura catastale casa via Roma" resta così; "IMG_1234" o "scan001" vengono rinominati'),
+              value: c.keepFileName,
+              onChanged: (v) {
+                c.keepFileName = v;
                 app.saveConfig();
               },
             ),

@@ -4,6 +4,7 @@
 library;
 
 import 'archive.dart';
+import 'extract.dart';
 import 'matching.dart';
 import 'models.dart';
 
@@ -242,10 +243,15 @@ const Map<String, String> titlePlaceholders = {
   '{original_filename}': 'nome del file senza estensione',
   '{asn}': 'numero d\'archivio',
   '{owner}': 'chi l\'ha aggiunto',
+  '{kind}': 'cosa è nello specifico (Bonifico, Visura catastale…)',
+  '{details}': 'beneficiario, numero o comune',
+  '{amount}': 'importo',
 };
 
-/// Valori dei segnaposti per un documento.
-Map<String, String> placeholderValues(Archive a, Document d) {
+/// Valori dei segnaposti per un documento. Con [facts] legge anche dal
+/// testo tipo specifico, dettagli e importo (più lento).
+Map<String, String> placeholderValues(Archive a, Document d, {bool facts = false}) {
+  final f = facts ? extractFacts(d.content) : null;
   final added = DateTime.fromMillisecondsSinceEpoch(d.added);
   var name = d.originalName;
   final dot = name.lastIndexOf('.');
@@ -262,6 +268,9 @@ Map<String, String> placeholderValues(Archive a, Document d) {
     '{original_filename}': name,
     '{asn}': d.asn?.toString() ?? '',
     '{owner}': d.owner ?? '',
+    if (f != null) '{kind}': f.kind ?? a.type(d.typeId)?.name ?? '',
+    if (f != null) '{details}': f.details,
+    if (f != null) '{amount}': f.amountUseful ? f.amount! : '',
   };
 }
 
@@ -274,7 +283,11 @@ String fillPlaceholders(
   String Function(String key)? empty,
   String Function(String value)? clean,
 }) {
-  final values = placeholderValues(a, d);
+  final values = placeholderValues(
+    a,
+    d,
+    facts: template.contains('{kind}') || template.contains('{details}') || template.contains('{amount}'),
+  );
   String c(String v) => clean == null ? v : clean(v);
   var out = template;
   values.forEach((k, v) {

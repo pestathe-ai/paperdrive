@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/archive.dart';
 import '../core/dates.dart';
+import '../core/extract.dart' show detectIssuer;
 import '../core/mail_rules.dart';
 import '../core/matching.dart';
 import '../core/models.dart';
@@ -225,6 +226,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Se nessuna regola ha scelto il corrispondente, prova a riconoscere
+  /// l'ente o l'azienda dal testo (banche, gestori, enti pubblici…).
+  void _guessCorrespondent(Document doc) {
+    if (archive.correspondent(doc.correspondentId) != null) return;
+    final issuer = detectIssuer(doc.content);
+    if (issuer != null) doc.correspondentId = correspondentNamed(issuer).id;
+  }
+
   /// Corrispondente con questo nome (senza maiuscole/accenti), o uno nuovo.
   NamedEntity correspondentNamed(String name) {
     final n = normalize(name.trim());
@@ -271,6 +280,7 @@ class AppState extends ChangeNotifier {
       ));
     }
     applyMatches(archive, doc);
+    _guessCorrespondent(doc);
     final title = autoTitle(archive, doc);
     if (title != null) doc.title = title;
     if (asn != null) {
@@ -480,6 +490,7 @@ class AppState extends ChangeNotifier {
     for (final d in docs) {
       final before = d.toJson();
       applyMatches(archive, d, overwrite: overwrite);
+      if (retitle) _guessCorrespondent(d);
       if (retitle) {
         final t = autoTitle(archive, d);
         if (t != null) d.title = t;

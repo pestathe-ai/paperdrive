@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:paperdrive/core/archive.dart';
 import 'package:paperdrive/core/dates.dart';
+import 'package:paperdrive/core/extract.dart';
 import 'package:paperdrive/core/mail_rules.dart';
 import 'package:paperdrive/core/matching.dart';
 import 'package:paperdrive/core/models.dart';
@@ -449,10 +450,10 @@ void main() {
         correspondentId: enel.id,
       );
       d.title = autoTitle(a, d)!;
-      expect(d.title, 'Bolletta Enel 03-2024');
+      expect(d.title, 'Bolletta - Enel');
       expect(drivePath(a, d).$1, ['Bolletta', '2024']);
-      expect(drivePath(a, d).$2, '2024-03-05 Bolletta Enel 03-2024');
-      expect(driveFileName(a, d, archived: true), '2024-03-05 Bolletta Enel 03-2024 (PDF-A).pdf');
+      expect(drivePath(a, d).$2, '2024-03-05 Bolletta - Enel');
+      expect(driveFileName(a, d, archived: true), '2024-03-05 Bolletta - Enel (PDF-A).pdf');
 
       final x = Document(title: 'A/B: prova?', created: DateTime(2023, 1, 9));
       expect(autoTitle(a, x), isNull);
@@ -465,7 +466,7 @@ void main() {
       a.storagePaths[p.id] = p;
       d.storagePathId = p.id;
       expect(drivePath(a, d).$1, ['Enel', '2024']);
-      expect(drivePath(a, d).$2, 'Bolletta Enel 03-2024');
+      expect(drivePath(a, d).$2, 'Bolletta - Enel');
     });
 
     test('cronologia', () {
@@ -515,6 +516,77 @@ void main() {
       final noSplit = planBarcodeSplit([[], ['PATCHT']],
           split: false, separator: 'PATCHT', readAsn: false, asnPrefix: 'ASN');
       expect(noSplit.single.pages, [0, 1]);
+    });
+  });
+
+  group('lettura specifica e nomi', () {
+    const bonifico = 'Intesa Sanpaolo\nEsito bonifico SEPA\nOrdinante: Domenico Venturino\n'
+        'Beneficiario: MARIO ROSSI\nIBAN IT60X0542811101000000123456\nImporto: EUR 1.250,00\n'
+        'Causale: affitto ottobre\nData esecuzione 15/10/2026';
+    const visura = 'Agenzia delle Entrate\nDirezione Provinciale di Milano\nUfficio Provinciale - Territorio\n'
+        'Servizi Catastali\nVisura per immobile\nComune di MILANO (Codice: F205)\nFoglio 12 Particella 345\n'
+        'Rendita Euro 812,34';
+
+    test('cosa è, chi lo emette, dati chiave', () {
+      final f = extractFacts(bonifico);
+      expect(f.kind, 'Bonifico');
+      expect(f.issuer, 'Intesa Sanpaolo');
+      expect(f.amount, '1.250,00 €');
+      expect(f.beneficiary, 'Mario Rossi');
+      expect(f.details, 'a Mario Rossi');
+      final v = extractFacts(visura);
+      expect(v.kind, 'Visura catastale');
+      expect(v.issuer, 'Agenzia delle Entrate');
+      expect(v.municipality, 'Milano');
+      expect(v.details, 'Comune di Milano');
+      expect(v.amountUseful, isFalse);
+      expect(detectKind('ESTRATTO CONTO al 30/09 ... bonifico a favore di X'), 'Estratto conto');
+      expect(detectNumber('FATTURA N. 2024/123 del 3 marzo'), '2024/123');
+      expect(detectAmount('Totale da pagare 89.90'), '89,90 €');
+    });
+
+    test('nomi di file generici o descrittivi', () {
+      for (final g in [
+        'IMG_20241015_123456.jpg',
+        'scan001.pdf',
+        'Documento (3).pdf',
+        'WhatsApp Image 2024-10-15 at 12.30.45.jpeg',
+        'Ricevuta_123456789.pdf',
+        'Contratto.pdf',
+        'download (1).pdf',
+        'Scansione 18-10-2026 12.30',
+      ]) {
+        expect(meaningfulFileName(g), isNull, reason: g);
+      }
+      expect(meaningfulFileName('visura_catastale_casa_via_Roma.pdf'), 'Visura catastale casa via Roma');
+      expect(meaningfulFileName('Contratto affitto-Milano.pdf'), 'Contratto affitto - Milano');
+    });
+
+    test('titolo automatico completo', () {
+      final a = Archive.starter();
+      final intesa = NamedEntity(name: 'Intesa Sanpaolo');
+      a.correspondents[intesa.id] = intesa;
+      final d = Document(title: 'x', originalName: 'Ricevuta_123.pdf', content: bonifico)
+        ..correspondentId = intesa.id;
+      applyMatches(a, d);
+      expect(a.type(d.typeId)?.name, 'Banca');
+      expect(autoTitle(a, d), 'Bonifico a Mario Rossi 1.250,00 € - Intesa Sanpaolo');
+
+      final ade = NamedEntity(name: 'Agenzia delle Entrate');
+      a.correspondents[ade.id] = ade;
+      final v = Document(title: 'x', originalName: 'documento.pdf', content: visura)..correspondentId = ade.id;
+      expect(autoTitle(a, v), 'Visura catastale Comune di Milano - Agenzia delle Entrate');
+      final named = Document(title: 'x', originalName: 'Visura catastale casa via Roma.pdf', content: visura);
+      expect(autoTitle(a, named), 'Visura catastale casa via Roma');
+      a.config.keepFileName = false;
+      expect(autoTitle(a, named), 'Visura catastale Comune di Milano');
+    });
+
+    test('vecchio modello del titolo aggiornato', () {
+      final c = ArchiveConfig.fromJson({'title': ArchiveConfig.oldTitleTemplate});
+      expect(c.titleTemplate, ArchiveConfig.defaultTitleTemplate);
+      final custom = ArchiveConfig.fromJson({'title': '{title} {asn}'});
+      expect(custom.titleTemplate, '{title} {asn}');
     });
   });
 }
