@@ -173,8 +173,6 @@ String? detectIssuer(String text) {
   return best;
 }
 
-final RegExp _amountNumber = RegExp(r'(\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2}(?!\d))');
-
 String? _normalizeAmount(String raw) {
   var s = raw.replaceAll(' ', '');
   if (!s.contains(',') && s.contains('.')) {
