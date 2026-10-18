@@ -7,6 +7,7 @@ import 'document_screen.dart';
 import 'filter_sheet.dart';
 import 'mail_screen.dart';
 import 'manage_screen.dart';
+import 'organize_screen.dart';
 import 'settings_screen.dart';
 import 'sharing_screen.dart';
 import 'trash_screen.dart';
@@ -26,8 +27,27 @@ class _HomeScreenState extends State<HomeScreen> {
   final searchCtrl = TextEditingController();
   final Set<String> selected = {};
 
+  AppState? _app;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_app == null) {
+      _app = AppScope.read(context);
+      _app!.shareResults.addListener(_onShared);
+    }
+  }
+
+  void _onShared() {
+    final msgs = _app?.shareResults.value;
+    if (msgs == null || msgs.isEmpty || !mounted) return;
+    showMessage(context, msgs.join('\n'));
+    _app!.shareResults.value = null;
+  }
+
   @override
   void dispose() {
+    _app?.shareResults.removeListener(_onShared);
     searchCtrl.dispose();
     super.dispose();
   }
@@ -137,6 +157,42 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'type':
         final r = await pickType(context, null);
         if (r != null) app.bulkSetType(docs, r.id);
+      case 'path':
+        final paths = app.archive.activeStoragePaths;
+        final chosen = await showDialog<String>(
+          context: context,
+          builder: (c) => SimpleDialog(
+            title: const Text('Percorso di archiviazione'),
+            children: [
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(c, ''),
+                child: const Text('Predefinito (impostazioni)'),
+              ),
+              for (final p in paths)
+                SimpleDialogOption(onPressed: () => Navigator.pop(c, p.id), child: Text(p.name)),
+            ],
+          ),
+        );
+        if (chosen == null) return;
+        app.bulkSetStoragePath(docs, chosen.isEmpty ? null : chosen);
+      case 'retitle':
+        final n = app.reapplyRules(docs, overwrite: true, retitle: true);
+        if (mounted) showMessage(context, 'Riclassificati e rinominati: $n documenti');
+      case 'merge':
+        if (docs.length < 2) {
+          showMessage(context, 'Seleziona almeno 2 documenti');
+          return;
+        }
+        final trash = await confirm(context,
+            title: 'Unire ${docs.length} documenti?',
+            message: 'Nell\'ordine in cui li hai selezionati. Spostare gli originali nel cestino?',
+            ok: 'Sì, sposta nel cestino');
+        try {
+          final nd = await app.mergeDocuments(docs, trashOriginals: trash);
+          if (mounted && nd != null) showMessage(context, 'Creato: ${nd.title}');
+        } catch (e) {
+          if (mounted) showMessage(context, 'Errore: $e');
+        }
       case 'reviewed':
         app.markReviewed(docs);
       case 'rules':
@@ -211,6 +267,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       PopupMenuItem(value: 'corr', child: Text('Imposta corrispondente')),
                       PopupMenuItem(value: 'type', child: Text('Imposta tipo')),
                       PopupMenuItem(value: 'rules', child: Text('Applica regole automatiche')),
+                      PopupMenuItem(value: 'retitle', child: Text('Riclassifica e rinomina')),
+                      PopupMenuItem(value: 'path', child: Text('Imposta percorso di archiviazione')),
+                      PopupMenuItem(value: 'merge', child: Text('Unisci in un documento')),
                     ],
                   ),
                 ],
@@ -492,6 +551,11 @@ class _HomeScreenState extends State<HomeScreen> {
               leading: const Icon(Icons.view_list_outlined),
               title: const Text('Viste salvate e campi'),
               onTap: () => go(const ManageScreen(initialTab: 3)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome_outlined),
+              title: const Text('Archiviazione automatica'),
+              onTap: () => go(const OrganizeScreen()),
             ),
             ListTile(
               leading: const Icon(Icons.account_tree_outlined),

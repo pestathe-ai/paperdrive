@@ -60,7 +60,11 @@ Map<String, T> _mergeMap<T extends Syncable>(
     fields: _mergeMap(local.fields, remote.fields, r),
     views: _mergeMap(local.views, remote.views, r),
     workflows: _mergeMap(local.workflows, remote.workflows, r),
+    storagePaths: _mergeMap(local.storagePaths, remote.storagePaths, r),
+    config: remote.config.modified > local.config.modified ? remote.config : local.config,
   );
+  if (remote.config.modified > local.config.modified) r.fromRemote++;
+  if (local.config.modified > remote.config.modified) r.fromLocal++;
   return (merged, r);
 }
 

@@ -38,6 +38,7 @@ class Workflow with Syncable implements Matchable {
     this.removeAllTags = false,
     this.setCorrespondent,
     this.setType,
+    this.setStoragePath,
     Map<String, String>? setFields,
     this.assignAsn = false,
     this.markReviewed = false,
@@ -93,6 +94,7 @@ class Workflow with Syncable implements Matchable {
   bool removeAllTags;
   String? setCorrespondent;
   String? setType;
+  String? setStoragePath;
   Map<String, String> setFields;
   bool assignAsn;
   bool markReviewed;
@@ -124,6 +126,7 @@ class Workflow with Syncable implements Matchable {
         'removeAll': removeAllTags,
         if (setCorrespondent != null) 'corr': setCorrespondent,
         if (setType != null) 'type': setType,
+        if (setStoragePath != null) 'path': setStoragePath,
         'fields': setFields,
         'asn': assignAsn,
         'reviewed': markReviewed,
@@ -165,6 +168,7 @@ class Workflow with Syncable implements Matchable {
         removeAllTags: j['removeAll'] as bool? ?? false,
         setCorrespondent: j['corr'] as String?,
         setType: j['type'] as String?,
+        setStoragePath: j['path'] as String?,
         setFields: ((j['fields'] as Map?) ?? const {})
             .map((k, v) => MapEntry('$k', '$v')),
         assignAsn: j['asn'] as bool? ?? false,
@@ -240,14 +244,13 @@ const Map<String, String> titlePlaceholders = {
   '{owner}': 'chi l\'ha aggiunto',
 };
 
-/// Sostituisce i segnaposti del titolo; anche `{campo:Nome}` per i campi
-/// personalizzati.
-String renderTitle(String template, Archive a, Document d) {
+/// Valori dei segnaposti per un documento.
+Map<String, String> placeholderValues(Archive a, Document d) {
   final added = DateTime.fromMillisecondsSinceEpoch(d.added);
   var name = d.originalName;
   final dot = name.lastIndexOf('.');
   if (dot > 0) name = name.substring(0, dot);
-  final values = <String, String>{
+  return <String, String>{
     '{title}': d.title,
     '{correspondent}': a.correspondent(d.correspondentId)?.name ?? '',
     '{document_type}': a.type(d.typeId)?.name ?? '',
@@ -260,15 +263,40 @@ String renderTitle(String template, Archive a, Document d) {
     '{asn}': d.asn?.toString() ?? '',
     '{owner}': d.owner ?? '',
   };
+}
+
+/// Sostituisce i segnaposti (anche `{campo:Nome}`); [empty] dà il testo per
+/// un valore vuoto (di default resta vuoto).
+String fillPlaceholders(
+  String template,
+  Archive a,
+  Document d, {
+  String Function(String key)? empty,
+  String Function(String value)? clean,
+}) {
+  final values = placeholderValues(a, d);
+  String c(String v) => clean == null ? v : clean(v);
   var out = template;
-  values.forEach((k, v) => out = out.replaceAll(k, v));
+  values.forEach((k, v) {
+    out = out.replaceAll(k, v.isEmpty && empty != null ? empty(k) : c(v));
+  });
   out = out.replaceAllMapped(RegExp(r'\{campo:([^}]+)\}'), (m) {
     final fieldName = m.group(1)!.trim().toLowerCase();
     for (final f in a.activeFields) {
-      if (f.name.toLowerCase() == fieldName) return d.customFields[f.id] ?? '';
+      if (f.name.toLowerCase() == fieldName) {
+        final v = d.customFields[f.id] ?? '';
+        return v.isEmpty && empty != null ? empty(m.group(0)!) : c(v);
+      }
     }
-    return '';
+    return empty?.call(m.group(0)!) ?? '';
   });
+  return out;
+}
+
+/// Sostituisce i segnaposti del titolo; anche `{campo:Nome}` per i campi
+/// personalizzati.
+String renderTitle(String template, Archive a, Document d) {
+  var out = fillPlaceholders(template, a, d);
   // Spazi doppi e separatori rimasti soli quando un valore è vuoto.
   out = out.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
   out = out.replaceAll(RegExp(r'^[-–_·,\s]+|[-–_·,\s]+$'), '');
@@ -287,6 +315,9 @@ bool runActions(Workflow w, Archive a, Document d) {
     d.correspondentId = w.setCorrespondent;
   }
   if (w.setType != null && a.type(w.setType) != null) d.typeId = w.setType;
+  if (w.setStoragePath != null && a.storagePath(w.setStoragePath) != null) {
+    d.storagePathId = w.setStoragePath;
+  }
   w.setFields.forEach((k, v) {
     if (a.fields[k] != null && !a.fields[k]!.deleted) d.customFields[k] = v;
   });

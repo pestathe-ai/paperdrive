@@ -3,6 +3,7 @@
 library;
 
 import 'models.dart';
+import 'starter.dart';
 import 'workflows.dart';
 
 class Archive {
@@ -14,7 +15,11 @@ class Archive {
     Map<String, CustomField>? fields,
     Map<String, SavedView>? views,
     Map<String, Workflow>? workflows,
+    Map<String, StoragePath>? storagePaths,
+    ArchiveConfig? config,
   })  : workflows = workflows ?? {},
+        storagePaths = storagePaths ?? {},
+        config = config ?? ArchiveConfig(),
         documents = documents ?? {},
         tags = tags ?? {},
         correspondents = correspondents ?? {},
@@ -31,6 +36,8 @@ class Archive {
   final Map<String, CustomField> fields;
   final Map<String, SavedView> views;
   final Map<String, Workflow> workflows;
+  final Map<String, StoragePath> storagePaths;
+  ArchiveConfig config;
 
   static List<T> _alive<T extends Syncable>(Map<String, T> m) =>
       m.values.where((e) => !e.deleted).toList();
@@ -55,6 +62,14 @@ class Archive {
       _alive(fields)..sort((a, b) => _byName(a.name, b.name));
   List<SavedView> get activeViews =>
       _alive(views)..sort((a, b) => _byName(a.name, b.name));
+  List<StoragePath> get activeStoragePaths =>
+      _alive(storagePaths)..sort((a, b) => _byName(a.name, b.name));
+
+  StoragePath? storagePath(String? id) {
+    final p = id == null ? null : storagePaths[id];
+    return p == null || p.deleted ? null : p;
+  }
+
   List<Workflow> get activeWorkflows => _alive(workflows)
     ..sort((a, b) {
       final c = a.order.compareTo(b.order);
@@ -115,6 +130,7 @@ class Archive {
       ..tagIds = {}
       ..customFields = {}
       ..shareLink = null
+      ..history = []
       ..touch();
   }
 
@@ -155,6 +171,8 @@ class Archive {
         'fields': fields.values.map((e) => e.toJson()).toList(),
         'views': views.values.map((e) => e.toJson()).toList(),
         'workflows': workflows.values.map((e) => e.toJson()).toList(),
+        'paths': storagePaths.values.map((e) => e.toJson()).toList(),
+        'config': config.toJson(),
       };
 
   static Map<String, T> _read<T extends Syncable>(
@@ -177,13 +195,29 @@ class Archive {
         fields: _read(j['fields'], CustomField.fromJson),
         views: _read(j['views'], SavedView.fromJson),
         workflows: _read(j['workflows'], Workflow.fromJson),
+        storagePaths: _read(j['paths'], StoragePath.fromJson),
+        config: j['config'] is Map
+            ? ArchiveConfig.fromJson((j['config'] as Map).cast<String, dynamic>())
+            : null,
       );
 
-  /// Archivio iniziale con un tag "Da esaminare" (inbox), come Paperless.
+  /// Archivio iniziale: tag "Da esaminare" e categorie predefinite.
+  /// Gli id sono fissi, così telefoni diversi non creano doppioni.
   factory Archive.starter() {
     final a = Archive();
-    final inbox = Tag(name: 'Da esaminare', color: 0xFFC62828, isInbox: true);
-    a.tags[inbox.id] = inbox;
+    addStarterEntities(a);
     return a;
   }
+
+  /// Toglie da un documento il percorso cancellato.
+  void detachStoragePath(String id) {
+    for (final d in documents.values) {
+      if (d.storagePathId == id) {
+        d
+          ..storagePathId = null
+          ..touch();
+      }
+    }
+  }
+
 }

@@ -6,6 +6,8 @@ import 'package:paperdrive/core/dates.dart';
 import 'package:paperdrive/core/mail_rules.dart';
 import 'package:paperdrive/core/matching.dart';
 import 'package:paperdrive/core/models.dart';
+import 'package:paperdrive/core/organize.dart';
+import 'package:paperdrive/core/starter.dart';
 import 'package:paperdrive/core/search.dart';
 import 'package:paperdrive/core/sync_merge.dart';
 import 'package:paperdrive/core/text_utils.dart';
@@ -70,7 +72,7 @@ void main() {
     });
 
     test('applica tag, corrispondente e tipo', () {
-      final a = Archive.starter();
+      final a = Archive();
       final casa = Tag(name: 'Casa', algorithm: MatchAlgorithm.any, pattern: 'bolletta');
       final enel = NamedEntity(name: 'Enel', algorithm: MatchAlgorithm.literal, pattern: 'enel');
       final fattura = NamedEntity(name: 'Fattura', algorithm: MatchAlgorithm.any, pattern: 'totale');
@@ -410,6 +412,109 @@ void main() {
       expect(back.account(acc.id)!.host, 'imap.gmail.com');
       expect(back.rules.single.after, MailAfter.markRead);
       expect(back.processed[rule.id], {'1:5'});
+    });
+  });
+
+  group('organizzazione automatica', () {
+    late Archive a;
+    setUp(() => a = Archive.starter());
+
+    String? typeOf(String text) {
+      final d = Document(title: 'x', content: text);
+      return a.type(computeMatches(a, d).typeId)?.name;
+    }
+
+    test('categorie predefinite: vince la più pertinente', () {
+      expect(typeOf('Bolletta luce Enel Energia, consumi fatturati 120 kWh, POD IT001E'), 'Bolletta');
+      expect(typeOf('FATTURA n. 12 Partita IVA 0123 Imponibile 100 Aliquota IVA 22%'), 'Fattura');
+      expect(typeOf('Referto: esame del sangue. Azienda Sanitaria Locale'), 'Sanità');
+      expect(typeOf('Modello F24 - Agenzia delle Entrate - codice tributo 3918'), 'Tasse');
+      expect(typeOf('Ciao, ci vediamo domani'), isNull);
+    });
+
+    test('nessun doppione tra telefoni diversi', () {
+      final (m, _) = mergeArchives(Archive.starter(), Archive.starter());
+      expect(m.activeTypes.length, starterTypes.length);
+      expect(m.inboxTags.length, 1);
+      expect(addStarterEntities(m), 0);
+    });
+
+    test('titolo e percorso su Drive', () {
+      final enel = NamedEntity(name: 'Enel');
+      a.correspondents[enel.id] = enel;
+      final d = Document(
+        title: 'scan',
+        created: DateTime(2024, 3, 5),
+        typeId: 'st-bolletta',
+        correspondentId: enel.id,
+      );
+      d.title = autoTitle(a, d)!;
+      expect(d.title, 'Bolletta Enel 03-2024');
+      expect(drivePath(a, d).$1, ['Bolletta', '2024']);
+      expect(drivePath(a, d).$2, '2024-03-05 Bolletta Enel 03-2024');
+      expect(driveFileName(a, d, archived: true), '2024-03-05 Bolletta Enel 03-2024 (PDF-A).pdf');
+
+      final x = Document(title: 'A/B: prova?', created: DateTime(2023, 1, 9));
+      expect(autoTitle(a, x), isNull);
+      expect(drivePath(a, x).$1, ['Senza categoria', '2023']);
+      expect(drivePath(a, x).$2, '2023-01-09 A-B prova');
+      x.inTrash = true;
+      expect(drivePath(a, x).$1, ['Cestino', 'Senza categoria', '2023']);
+
+      final p = StoragePath(name: 'Per mittente', template: '{correspondent}/{created_year}/{title}');
+      a.storagePaths[p.id] = p;
+      d.storagePathId = p.id;
+      expect(drivePath(a, d).$1, ['Enel', '2024']);
+      expect(drivePath(a, d).$2, 'Bolletta Enel 03-2024');
+    });
+
+    test('cronologia', () {
+      final t = Tag(name: 'Casa');
+      a.tags[t.id] = t;
+      final d = Document(title: 'Vecchio', created: DateTime(2024, 1, 1));
+      final before = d.toJson();
+      d
+        ..title = 'Nuovo'
+        ..typeId = 'st-fattura'
+        ..tagIds.add(t.id);
+      final ch = describeChanges(a, before, d);
+      expect(ch, contains('Titolo: "Vecchio" → "Nuovo"'));
+      expect(ch, contains('Tipo: — → Fattura'));
+      expect(ch, contains('Tag aggiunti: Casa'));
+      expect(logChanges(a, before, d, via: 'Flusso X'), isTrue);
+      expect(d.history.single.text, startsWith('Flusso X: Titolo'));
+      expect(logChanges(a, d.toJson(), d), isFalse);
+      final back = Document.fromJson(jsonDecode(jsonEncode(d.toJson())) as Map<String, dynamic>);
+      expect(back.history.single.text, d.history.single.text);
+    });
+
+    test('documenti simili', () {
+      final d1 = Document(title: 'a', content: 'referto ospedale esame sangue emocromo');
+      final d2 = Document(title: 'b', content: 'referto ospedale visita esame');
+      final d3 = Document(title: 'c', content: 'contratto affitto appartamento canone');
+      for (final d in [d1, d2, d3]) {
+        a.documents[d.id] = d;
+      }
+      final sim = similarDocuments(a, d1);
+      expect(sim.first.$1, d2);
+      expect(sim.map((e) => e.$1), isNot(contains(d3)));
+    });
+
+    test('codici a barre: divisione e ASN', () {
+      expect(asnFromBarcode('ASN-00123', 'ASN'), 123);
+      expect(asnFromBarcode('XYZ1', 'ASN'), isNull);
+      final parts = planBarcodeSplit(
+        [[], ['ASN00042'], ['PATCHT'], [], ['PATCH T']],
+        split: true,
+        separator: 'PATCHT',
+        readAsn: true,
+        asnPrefix: 'ASN',
+      );
+      expect(parts.map((p) => p.pages), [[0, 1], [3]]);
+      expect(parts.map((p) => p.asn), [42, null]);
+      final noSplit = planBarcodeSplit([[], ['PATCHT']],
+          split: false, separator: 'PATCHT', readAsn: false, asnPrefix: 'ASN');
+      expect(noSplit.single.pages, [0, 1]);
     });
   });
 }

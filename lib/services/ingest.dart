@@ -4,15 +4,19 @@ import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart' show md5;
 import 'package:flutter/services.dart' show PlatformException, rootBundle;
+import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart'
+    show BarcodeFormat, BarcodeScanner;
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart'
     show InputImage, TextRecognizer, TextRecognitionScript;
 import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart' as pdfl;
 import 'package:pdf/widgets.dart' as pw;
-import 'package:pdfrx/pdfrx.dart' show PdfDocument, PdfImageExt;
+import 'package:pdfrx/pdfrx.dart'
+    show PdfDocument, PdfImageExt, PdfPage, PdfPageRotation, PdfPageWithRotationExtension;
 
 import '../core/models.dart';
+import '../core/organize.dart' show planBarcodeSplit;
 import 'pdfa.dart';
 import 'storage.dart';
 
@@ -48,6 +52,7 @@ class Ingestor {
 
   final Storage storage;
   TextRecognizer? _recognizer;
+  BarcodeScanner? _barcodes;
   pw.Font? _font;
   Uint8List? _icc;
 
@@ -213,42 +218,188 @@ class Ingestor {
     }
   }
 
-  /// Rende ogni pagina come immagine e la legge con l'OCR.
-  Future<List<OcrPage>> ocrPdf(String path, {void Function(int, int)? progress}) async {
-    final d = await PdfDocument.openFile(path);
-    final pages = <OcrPage>[];
+  /// Rende una pagina come immagine PNG (larghezza [width] pixel).
+  Future<String?> renderPage(PdfPage page, {int width = 1600}) async {
+    final scale = width / page.width;
+    final w = (page.width * scale).round();
+    final h = (page.height * scale).round();
+    final img = await page.render(
+      width: w,
+      height: h,
+      fullWidth: w.toDouble(),
+      fullHeight: h.toDouble(),
+      backgroundColor: 0xFFFFFFFF,
+    );
+    if (img == null) return null;
+    final png = storage.tmpPath('page_${newId()}.png');
+    try {
+      final uiImage = await img.createImage();
+      final data = await uiImage.toByteData(format: ui.ImageByteFormat.png);
+      uiImage.dispose();
+      if (data == null) return null;
+      await File(png).writeAsBytes(data.buffer.asUint8List(), flush: true);
+      return png;
+    } finally {
+      img.dispose();
+    }
+  }
+
+  /// Immagini di tutte le pagine (al massimo [maxOcrPages]).
+  Future<List<String>> renderPages(String pdfPath, {void Function(int, int)? progress}) async {
+    final d = await PdfDocument.openFile(pdfPath);
     try {
       final n = d.pages.length.clamp(0, maxOcrPages);
+      final out = <String>[];
       for (var i = 0; i < n; i++) {
         progress?.call(i + 1, n);
-        final page = d.pages[i];
-        final scale = 1600 / page.width;
-        final w = (page.width * scale).round();
-        final h = (page.height * scale).round();
-        final img = await page.render(
-          width: w,
-          height: h,
-          fullWidth: w.toDouble(),
-          fullHeight: h.toDouble(),
-          backgroundColor: 0xFFFFFFFF,
-        );
-        if (img == null) continue;
-        final png = storage.tmpPath('ocr_${newId()}.png');
-        try {
-          final uiImage = await img.createImage();
-          final data = await uiImage.toByteData(format: ui.ImageByteFormat.png);
-          uiImage.dispose();
-          if (data == null) continue;
-          await File(png).writeAsBytes(data.buffer.asUint8List(), flush: true);
-        } finally {
-          img.dispose();
-        }
-        pages.add(await ocrImage(png));
+        final png = await renderPage(d.pages[i]);
+        if (png != null) out.add(png);
       }
-      return pages;
+      return out;
     } finally {
       await d.dispose();
     }
+  }
+
+  /// Rende ogni pagina come immagine e la legge con l'OCR.
+  Future<List<OcrPage>> ocrPdf(String path, {void Function(int, int)? progress}) async {
+    final images = await renderPages(path, progress: progress);
+    final pages = <OcrPage>[];
+    for (final img in images) {
+      pages.add(await ocrImage(img));
+    }
+    return pages;
+  }
+
+  /// Codici a barre e QR trovati in un'immagine.
+  Future<List<String>> barcodesIn(String imagePath) async {
+    _barcodes ??= BarcodeScanner(formats: [BarcodeFormat.all]);
+    final found = await _barcodes!.processImage(InputImage.fromFilePath(imagePath));
+    return [
+      for (final b in found)
+        if ((b.rawValue ?? b.displayValue ?? '').isNotEmpty) b.rawValue ?? b.displayValue!,
+    ];
+  }
+
+  /// Nuovo PDF con alcune pagine (indici da 0), eventualmente ruotate
+  /// di [rotations] quarti di giro in senso orario.
+  Future<String> extractPages(
+    String pdfPath,
+    List<int> pages, {
+    Map<int, int> rotations = const {},
+  }) async {
+    final src = await PdfDocument.openFile(pdfPath);
+    final out = await PdfDocument.createNew(sourceName: 'pagine-${newId()}.pdf');
+    try {
+      out.pages = [
+        for (final i in pages)
+          (rotations[i] ?? 0) % 4 == 0
+              ? src.pages[i]
+              : src.pages[i].rotatedBy(PdfPageRotation.values[(rotations[i] ?? 0) % 4]),
+      ];
+      final bytes = await out.encodePdf();
+      final path = storage.tmpPath('${newId()}.pdf');
+      await File(path).writeAsBytes(bytes, flush: true);
+      return path;
+    } finally {
+      await out.dispose();
+      await src.dispose();
+    }
+  }
+
+  /// Unisce più PDF in uno solo, nell'ordine dato.
+  Future<String> mergePdfs(List<String> paths) async {
+    final docs = <PdfDocument>[];
+    final out = await PdfDocument.createNew(sourceName: 'unito-${newId()}.pdf');
+    try {
+      for (final p in paths) {
+        docs.add(await PdfDocument.openFile(p));
+      }
+      out.pages = [for (final d in docs) ...d.pages];
+      final bytes = await out.encodePdf();
+      final path = storage.tmpPath('${newId()}.pdf');
+      await File(path).writeAsBytes(bytes, flush: true);
+      return path;
+    } finally {
+      await out.dispose();
+      for (final d in docs) {
+        await d.dispose();
+      }
+    }
+  }
+
+  Future<int> pageCount(String pdfPath) async {
+    final d = await PdfDocument.openFile(pdfPath);
+    try {
+      return d.pages.length;
+    } finally {
+      await d.dispose();
+    }
+  }
+
+  /// Cerca i codici a barre nelle pagine: divide dove trova il foglio
+  /// separatore e legge l'ASN. Restituisce le parti con l'eventuale ASN.
+  Future<List<(StagedInput, int?)>> splitByBarcodes(
+    StagedInput input, {
+    required bool split,
+    required String separator,
+    required bool readAsn,
+    required String asnPrefix,
+    void Function(String)? status,
+  }) async {
+    if (!split && !readAsn) return [(input, null)];
+    final total = await pageCount(input.pdfPath);
+    if (total == 0 || total > maxOcrPages) return [(input, null)];
+    status?.call('Ricerca dei codici a barre…');
+    final images = input.ocrImages.length == total
+        ? input.ocrImages
+        : await renderPages(input.pdfPath);
+    if (images.length != total) return [(input, null)];
+    final codes = <List<String>>[];
+    for (final img in images) {
+      try {
+        codes.add(await barcodesIn(img));
+      } catch (_) {
+        codes.add(const []);
+      }
+    }
+    final parts = planBarcodeSplit(
+      codes,
+      split: split,
+      separator: separator,
+      readAsn: readAsn,
+      asnPrefix: asnPrefix,
+    );
+    if (parts.length == 1 && parts.first.pages.length == total) {
+      return [
+        (
+          StagedInput(
+            pdfPath: input.pdfPath,
+            originalName: input.originalName,
+            source: input.source,
+            ocrImages: images,
+          ),
+          parts.first.asn,
+        ),
+      ];
+    }
+    final base = p.basenameWithoutExtension(input.originalName);
+    final out = <(StagedInput, int?)>[];
+    var k = 0;
+    for (final part in parts) {
+      k++;
+      final path = await extractPages(input.pdfPath, part.pages);
+      out.add((
+        StagedInput(
+          pdfPath: path,
+          originalName: '$base (parte $k).pdf',
+          source: input.source,
+          ocrImages: [for (final i in part.pages) images[i]],
+        ),
+        part.asn,
+      ));
+    }
+    return out;
   }
 
   static String joinText(List<OcrPage> pages) =>
@@ -370,5 +521,7 @@ class Ingestor {
   Future<void> dispose() async {
     await _recognizer?.close();
     _recognizer = null;
+    await _barcodes?.close();
+    _barcodes = null;
   }
 }

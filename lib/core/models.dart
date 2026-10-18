@@ -24,13 +24,14 @@ class Session {
 }
 
 /// Da dove arriva un documento.
-enum DocSource { scan, file, mail }
+enum DocSource { scan, file, mail, share }
 
 extension DocSourceLabel on DocSource {
   String get label => switch (this) {
         DocSource.scan => 'Scansione',
         DocSource.file => 'File importato',
         DocSource.mail => 'Email',
+        DocSource.share => 'Condiviso da un\'altra app',
       };
 }
 
@@ -289,9 +290,13 @@ class Document with Syncable {
     this.archiveRev = 0,
     this.archiveSize = 0,
     this.shareLink,
+    this.storagePathId,
+    this.fileRev = 0,
+    List<HistoryEntry>? history,
     int? modified,
     this.deleted = false,
   })  : id = id ?? newId(),
+        history = history ?? <HistoryEntry>[],
         owner = owner ?? Session.user,
         created = created ?? DateTime.now(),
         added = added ?? nowMs(),
@@ -344,6 +349,21 @@ class Document with Syncable {
 
   /// Link pubblico di Google Drive, se attivo.
   String? shareLink;
+
+  /// Percorso di archiviazione scelto (null = quello predefinito).
+  String? storagePathId;
+
+  /// Cronologia delle modifiche (le più recenti in fondo).
+  List<HistoryEntry> history;
+
+  static const int maxHistory = 100;
+
+  void log(String text) {
+    history.add(HistoryEntry(text: text));
+    if (history.length > maxHistory) {
+      history.removeRange(0, history.length - maxHistory);
+    }
+  }
   @override
   int modified;
 
@@ -352,7 +372,10 @@ class Document with Syncable {
   @override
   bool deleted;
 
-  String get fileName => '$id.pdf';
+  /// Versione del PDF originale: cambia quando si modificano le pagine.
+  int fileRev;
+
+  String get fileName => fileRev == 0 ? '$id.pdf' : '$id.v$fileRev.pdf';
 
   bool get hasArchive => archiveRev > 0;
 
@@ -390,6 +413,9 @@ class Document with Syncable {
         if (archiveRev > 0) 'arch': archiveRev,
         if (archiveSize > 0) 'archSize': archiveSize,
         if (shareLink != null) 'link': shareLink,
+        if (storagePathId != null) 'path': storagePathId,
+        if (fileRev > 0) 'rev': fileRev,
+        if (history.isNotEmpty) 'hist': history.map((h) => h.toJson()).toList(),
         'mod': modified,
         if (deleted) 'del': true,
       };
@@ -423,6 +449,11 @@ class Document with Syncable {
         archiveRev: (j['arch'] as num?)?.toInt() ?? 0,
         archiveSize: (j['archSize'] as num?)?.toInt() ?? 0,
         shareLink: j['link'] as String?,
+        storagePathId: j['path'] as String?,
+        fileRev: (j['rev'] as num?)?.toInt() ?? 0,
+        history: ((j['hist'] as List?) ?? const [])
+            .map((h) => HistoryEntry.fromJson((h as Map).cast<String, dynamic>()))
+            .toList(),
         modified: (j['mod'] as num?)?.toInt() ?? 0,
         deleted: j['del'] as bool? ?? false,
       )..owner = j['owner'] as String?;
@@ -575,5 +606,148 @@ class SavedView with Syncable {
         showOnHome: j['home'] as bool? ?? true,
         modified: (j['mod'] as num?)?.toInt() ?? 0,
         deleted: j['del'] as bool? ?? false,
+      );
+}
+
+
+/// Una voce della cronologia di un documento.
+class HistoryEntry {
+  HistoryEntry({required this.text, int? at, String? user})
+      : at = at ?? nowMs(),
+        user = user ?? Session.user;
+
+  final int at;
+  final String? user;
+  final String text;
+
+  Map<String, dynamic> toJson() => {
+        'at': at,
+        if (user != null) 'u': user,
+        't': text,
+      };
+
+  factory HistoryEntry.fromJson(Map<String, dynamic> j) => HistoryEntry(
+        text: j['t'] as String? ?? '',
+        at: (j['at'] as num?)?.toInt() ?? 0,
+        user: j['u'] as String?,
+      );
+}
+
+/// Percorso di archiviazione su Drive (come gli "storage path" di Paperless):
+/// cartelle e nome del file costruiti dai dati del documento.
+class StoragePath with Syncable implements Matchable {
+  StoragePath({
+    String? id,
+    required this.name,
+    required this.template,
+    this.algorithm = MatchAlgorithm.none,
+    this.pattern = '',
+    this.caseInsensitive = true,
+    int? modified,
+    this.deleted = false,
+  })  : id = id ?? newId(),
+        modified = modified ?? nowMs();
+
+  @override
+  final String id;
+  @override
+  String name;
+
+  /// Es. `{document_type}/{created_year}/{created} {title}`: l'ultima parte
+  /// è il nome del file.
+  String template;
+  @override
+  MatchAlgorithm algorithm;
+  @override
+  String pattern;
+  @override
+  bool caseInsensitive;
+  @override
+  int modified;
+  @override
+  bool deleted;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'tpl': template,
+        'algo': algorithm.name,
+        'pattern': pattern,
+        'ci': caseInsensitive,
+        'mod': modified,
+        if (deleted) 'del': true,
+      };
+
+  factory StoragePath.fromJson(Map<String, dynamic> j) => StoragePath(
+        id: j['id'] as String,
+        name: j['name'] as String? ?? '',
+        template: j['tpl'] as String? ?? '',
+        algorithm: _algo(j['algo']),
+        pattern: j['pattern'] as String? ?? '',
+        caseInsensitive: j['ci'] as bool? ?? true,
+        modified: (j['mod'] as num?)?.toInt() ?? 0,
+        deleted: j['del'] as bool? ?? false,
+      );
+}
+
+/// Impostazioni dell'archivio (sincronizzate con l'indice).
+class ArchiveConfig {
+  ArchiveConfig({
+    this.pathTemplate = defaultPathTemplate,
+    this.titleTemplate = defaultTitleTemplate,
+    this.autoTitle = true,
+    this.organizeDrive = true,
+    this.barcodeSplit = true,
+    this.separatorBarcode = 'PATCHT',
+    this.asnBarcode = true,
+    this.asnPrefix = 'ASN',
+    int? modified,
+  }) : modified = modified ?? 0;
+
+  static const String defaultPathTemplate = '{document_type}/{created_year}/{created} {title}';
+  static const String defaultTitleTemplate =
+      '{document_type} {correspondent} {created_month}-{created_year}';
+
+  /// Cartelle e nome dei file su Drive.
+  String pathTemplate;
+
+  /// Titolo automatico (usato quando si conoscono tipo o corrispondente).
+  String titleTemplate;
+  bool autoTitle;
+
+  /// Organizza i file su Drive in cartelle (altrimenti tutti nella cartella principale).
+  bool organizeDrive;
+
+  /// Divide una scansione dove trova un foglio con questo codice a barre.
+  bool barcodeSplit;
+  String separatorBarcode;
+
+  /// Legge l'ASN da un'etichetta con codice a barre (es. ASN00123).
+  bool asnBarcode;
+  String asnPrefix;
+  int modified;
+
+  Map<String, dynamic> toJson() => {
+        'path': pathTemplate,
+        'title': titleTemplate,
+        'autoTitle': autoTitle,
+        'organize': organizeDrive,
+        'split': barcodeSplit,
+        'sep': separatorBarcode,
+        'asnBc': asnBarcode,
+        'asnPre': asnPrefix,
+        'mod': modified,
+      };
+
+  factory ArchiveConfig.fromJson(Map<String, dynamic> j) => ArchiveConfig(
+        pathTemplate: j['path'] as String? ?? defaultPathTemplate,
+        titleTemplate: j['title'] as String? ?? defaultTitleTemplate,
+        autoTitle: j['autoTitle'] as bool? ?? true,
+        organizeDrive: j['organize'] as bool? ?? true,
+        barcodeSplit: j['split'] as bool? ?? true,
+        separatorBarcode: j['sep'] as String? ?? 'PATCHT',
+        asnBarcode: j['asnBc'] as bool? ?? true,
+        asnPrefix: j['asnPre'] as String? ?? 'ASN',
+        modified: (j['mod'] as num?)?.toInt() ?? 0,
       );
 }

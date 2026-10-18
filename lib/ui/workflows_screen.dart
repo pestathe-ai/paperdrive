@@ -93,6 +93,7 @@ class WorkflowsScreen extends StatelessWidget {
       if (w.removeTags.isNotEmpty || w.removeAllTags) 'toglie tag',
       if (w.setCorrespondent != null) 'corrispondente',
       if (w.setType != null) 'tipo',
+      if (w.setStoragePath != null) 'percorso',
       if (w.setFields.isNotEmpty) 'campi',
       if (w.assignAsn) 'ASN',
       if (w.markReviewed) 'esaminato',
@@ -356,6 +357,29 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
               final r = await pickType(context, w.setType);
               if (r != null) setState(() => w.setType = r.id);
             }),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Imposta percorso di archiviazione'),
+              subtitle: Text(a.storagePath(w.setStoragePath)?.name ?? 'Non cambiare'),
+              trailing: const Icon(Icons.edit_outlined),
+              onTap: () async {
+                final chosen = await showDialog<String>(
+                  context: context,
+                  builder: (c) => SimpleDialog(
+                    title: const Text('Percorso'),
+                    children: [
+                      SimpleDialogOption(
+                        onPressed: () => Navigator.pop(c, ''),
+                        child: const Text('Non cambiare'),
+                      ),
+                      for (final p in a.activeStoragePaths)
+                        SimpleDialogOption(onPressed: () => Navigator.pop(c, p.id), child: Text(p.name)),
+                    ],
+                  ),
+                );
+                if (chosen != null) setState(() => w.setStoragePath = chosen.isEmpty ? null : chosen);
+              },
+            ),
             for (final f in a.activeFields)
               ListTile(
                 contentPadding: EdgeInsets.zero,

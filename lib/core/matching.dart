@@ -26,6 +26,26 @@ bool _containsWord(String haystack, String needle, bool ci) {
   return re.hasMatch(h);
 }
 
+/// Quanto bene una regola corrisponde (0 = per niente). Con "una qualsiasi
+/// parola" conta quante parole diverse compaiono, così vince la categoria
+/// più pertinente.
+int ruleScore(Matchable m, String text) {
+  if (!matchesRule(m, text)) return 0;
+  switch (m.algorithm) {
+    case MatchAlgorithm.any:
+      return splitTerms(m.pattern.trim())
+          .where((t) => _containsWord(text, t, m.caseInsensitive))
+          .length;
+    case MatchAlgorithm.all:
+      return splitTerms(m.pattern.trim()).length + 1;
+    case MatchAlgorithm.literal:
+    case MatchAlgorithm.regex:
+      return 3;
+    default:
+      return 1;
+  }
+}
+
 /// Vero se la regola (non automatica) corrisponde al testo.
 bool matchesRule(Matchable m, String text) {
   final pattern = m.pattern.trim();
@@ -109,10 +129,16 @@ Map<String, double> centroid(Iterable<Map<String, double>> vectors) {
 
 /// Risultato delle regole: cosa assegnare al documento.
 class MatchResult {
-  MatchResult({required this.tagIds, this.correspondentId, this.typeId});
+  MatchResult({
+    required this.tagIds,
+    this.correspondentId,
+    this.typeId,
+    this.storagePathId,
+  });
   final Set<String> tagIds;
   final String? correspondentId;
   final String? typeId;
+  final String? storagePathId;
 }
 
 /// Calcola tag, corrispondente e tipo suggeriti per [doc].
@@ -149,15 +175,21 @@ MatchResult computeMatches(Archive archive, Document doc) {
   }
 
   String? pickOne(
-    List<NamedEntity> entities,
+    List<Matchable> entities,
     String? Function(Document) labelOf,
   ) {
-    // Prima le regole esplicite, poi l'automatica con il punteggio migliore.
+    // Prima le regole esplicite (vince la più pertinente), poi l'automatica.
+    String? bestRule;
+    var bestRuleScore = 0;
     for (final e in entities) {
-      if (e.algorithm != MatchAlgorithm.auto && matchesRule(e, text)) {
-        return e.id;
+      if (e.algorithm == MatchAlgorithm.auto) continue;
+      final sc = ruleScore(e, text);
+      if (sc > bestRuleScore) {
+        bestRuleScore = sc;
+        bestRule = e.id;
       }
     }
+    if (bestRule != null) return bestRule;
     String? best;
     var bestScore = autoThreshold;
     for (final e in entities.where((e) => e.algorithm == MatchAlgorithm.auto)) {
@@ -175,6 +207,7 @@ MatchResult computeMatches(Archive archive, Document doc) {
     correspondentId:
         pickOne(archive.activeCorrespondents, (d) => d.correspondentId),
     typeId: pickOne(archive.activeTypes, (d) => d.typeId),
+    storagePathId: pickOne(archive.activeStoragePaths, (d) => d.storagePathId),
   );
 }
 
@@ -197,6 +230,12 @@ bool applyMatches(Archive archive, Document doc, {bool overwrite = false}) {
       (overwrite || doc.typeId == null) &&
       doc.typeId != r.typeId) {
     doc.typeId = r.typeId;
+    changed = true;
+  }
+  if (r.storagePathId != null &&
+      (overwrite || doc.storagePathId == null) &&
+      doc.storagePathId != r.storagePathId) {
+    doc.storagePathId = r.storagePathId;
     changed = true;
   }
   if (changed) doc.touch();

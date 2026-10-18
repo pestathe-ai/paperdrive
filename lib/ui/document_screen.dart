@@ -9,6 +9,8 @@ import 'package:share_plus/share_plus.dart';
 import '../core/dates.dart' show findDates;
 import '../core/models.dart';
 import '../state/app_state.dart';
+import '../core/organize.dart' show drivePath, similarDocuments;
+import 'pages_screen.dart';
 import 'widgets.dart';
 
 class DocumentScreen extends StatefulWidget {
@@ -26,6 +28,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   bool contentEditing = false;
   late final AppState _app;
   int? _openedAt;
+  Map<String, dynamic>? _before;
 
   @override
   void initState() {
@@ -33,6 +36,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _app = AppScope.read(context);
     final d = _app.archive.documents[widget.docId];
     _openedAt = d?.modified;
+    _before = d?.toJson();
     titleCtrl = TextEditingController(text: d?.title ?? '');
     contentCtrl = TextEditingController(text: d?.content ?? '');
   }
@@ -41,7 +45,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void dispose() {
     // Uscendo dal documento modificato partono i flussi "Documento modificato".
     final d = _app.archive.documents[widget.docId];
-    if (d != null && !d.deleted && d.modified != _openedAt) _app.documentEdited(d);
+    if (d != null && !d.deleted && d.modified != _openedAt && _before != null) {
+      _app.documentEdited(d, _before!);
+    }
     titleCtrl.dispose();
     contentCtrl.dispose();
     super.dispose();
@@ -106,6 +112,19 @@ class _DocumentScreenState extends State<DocumentScreen> {
         } catch (e) {
           if (mounted) showMessage(context, 'Errore: $e');
         }
+      case 'pages':
+      case 'split':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => PagesScreen(doc: d, split: action == 'split')),
+        );
+        _before = d.toJson();
+        _openedAt = d.modified;
+        contentCtrl.text = d.content;
+      case 'retitle':
+        final n = app.reapplyRules([d], overwrite: true, retitle: true);
+        titleCtrl.text = d.title;
+        if (mounted) showMessage(context, n > 0 ? 'Classificato e rinominato' : 'Nessun cambiamento');
       case 'asn':
         d.asn = app.archive.nextAsn();
         app.saveDocument(d);
@@ -129,7 +148,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     final isInbox = app.archive.inboxTags.any((t) => d.tagIds.contains(t.id));
     final ro = app.readOnly;
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: Text(d.title, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -166,6 +185,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
                   ),
                   if (d.asn == null)
                     const PopupMenuItem(value: 'asn', child: Text('Assegna ASN')),
+                  const PopupMenuItem(value: 'retitle', child: Text('Riclassifica e rinomina')),
+                  const PopupMenuItem(value: 'pages', child: Text('Modifica pagine')),
+                  const PopupMenuItem(value: 'split', child: Text('Dividi in più documenti')),
                   const PopupMenuItem(value: 'trash', child: Text('Sposta nel cestino')),
                 ],
               ],
@@ -179,6 +201,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
               Tab(text: 'Anteprima'),
               Tab(text: 'Testo'),
               Tab(text: 'Note'),
+              Tab(text: 'Cronologia'),
             ],
           ),
         ),
@@ -197,6 +220,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
                   _Preview(doc: d),
                   _content(app, d),
                   IgnorePointer(ignoring: ro, child: _notes(app, d)),
+                  _history(app, d),
                 ],
               ),
             ),
@@ -347,7 +371,56 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _info('Versione PDF/A',
             d.hasArchive ? 'Sì (${(d.archiveSize / 1024).toStringAsFixed(0)} KB, ricercabile)' : 'No'),
         if (d.shareLink != null) _info('Link pubblico', d.shareLink!),
+        if (app.settings.driveEnabled)
+          _info('Su Drive', () {
+            final (folders, name) = drivePath(app.archive, d);
+            return [...folders, '$name.pdf'].join(' / ');
+          }()),
+        ..._similar(app, d),
       ],
+    );
+  }
+
+  List<Widget> _similar(AppState app, Document d) {
+    final sim = similarDocuments(app.archive, d, limit: 5);
+    if (sim.isEmpty) return const [];
+    return [
+      const Divider(height: 32),
+      Text('Documenti simili', style: Theme.of(context).textTheme.titleMedium),
+      for (final (o, score) in sim)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: DocThumb(o, width: 36, height: 48),
+          title: Text(o.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text('${formatDate(o.created)} · somiglianza ${(score * 100).round()}%'),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => DocumentScreen(docId: o.id)),
+          ),
+        ),
+    ];
+  }
+
+  Widget _history(AppState app, Document d) {
+    final items = d.history.reversed.toList();
+    if (items.isEmpty) {
+      return const EmptyState(icon: Icons.history, text: 'Nessuna modifica registrata');
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: items.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (c, i) {
+        final h = items[i];
+        final at = DateTime.fromMillisecondsSinceEpoch(h.at);
+        return ListTile(
+          dense: true,
+          leading: const Icon(Icons.edit_note),
+          title: Text(h.text),
+          subtitle: Text('${formatDate(at)} ${TimeOfDay.fromDateTime(at).format(c)}'
+              '${h.user == null ? '' : ' · ${h.user}'}'),
+        );
+      },
     );
   }
 

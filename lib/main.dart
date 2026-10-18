@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:pdfrx/pdfrx.dart' show pdfrxFlutterInitialize;
 
+import 'services/share_receiver.dart';
 import 'state/app_state.dart';
 import 'ui/home_screen.dart';
 
@@ -10,6 +11,8 @@ Future<void> main() async {
   final state = AppState();
   runApp(PaperdriveApp(state: state));
   await state.init();
+  // "Condividi" / "Apri con" da altre app: archiviazione automatica.
+  ShareReceiver(state.importShared).start();
 }
 
 class PaperdriveApp extends StatelessWidget {

@@ -2,6 +2,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/matching.dart';
 import '../core/models.dart';
+import '../core/organize.dart' show drivePath;
+import '../core/workflows.dart' show titlePlaceholders;
 import '../state/app_state.dart';
 import 'widgets.dart';
 
@@ -16,7 +18,7 @@ class ManageScreen extends StatelessWidget {
     final app = AppScope.of(context);
     final a = app.archive;
     return DefaultTabController(
-      length: 5,
+      length: 6,
       initialIndex: initialTab,
       child: Scaffold(
         appBar: AppBar(
@@ -30,6 +32,7 @@ class ManageScreen extends StatelessWidget {
               Tab(text: 'Tipi'),
               Tab(text: 'Viste'),
               Tab(text: 'Campi'),
+              Tab(text: 'Percorsi'),
             ],
           ),
         ),
@@ -148,6 +151,27 @@ class ManageScreen extends StatelessWidget {
                   ),
               ],
             ),
+            _list(
+              context,
+              empty: 'Nessun percorso personalizzato.\n'
+                  'Si usa quello predefinito delle impostazioni: '
+                  '${a.config.pathTemplate}',
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.folder_special_outlined),
+                  title: const Text('Predefinito'),
+                  subtitle: Text(a.config.pathTemplate),
+                ),
+                for (final p in a.activeStoragePaths)
+                  ListTile(
+                    leading: const Icon(Icons.folder_outlined),
+                    title: Text(p.name),
+                    subtitle: Text('${p.template}\n${_ruleText(p, a.activeDocuments.where((d) => d.storagePathId == p.id).length)}'),
+                    isThreeLine: true,
+                    onTap: () => _open(context, StoragePathEditor(path: StoragePath.fromJson(p.toJson()))),
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -205,6 +229,14 @@ class ManageScreen extends StatelessWidget {
         );
         if (type == null) return;
         app.saveField(CustomField(name: name, type: type));
+      case 5:
+        _open(
+          context,
+          StoragePathEditor(
+            path: StoragePath(name: '', template: '{correspondent}/{created_year}/{created} {title}'),
+            isNew: true,
+          ),
+        );
     }
   }
 }
@@ -458,6 +490,145 @@ class _EntityEditorState extends State<EntityEditor> {
               },
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+
+/// Modifica di un percorso di archiviazione (cartelle e nome su Drive).
+class StoragePathEditor extends StatefulWidget {
+  const StoragePathEditor({super.key, required this.path, this.isNew = false});
+
+  final StoragePath path;
+  final bool isNew;
+
+  @override
+  State<StoragePathEditor> createState() => _StoragePathEditorState();
+}
+
+class _StoragePathEditorState extends State<StoragePathEditor> {
+  StoragePath get p => widget.path;
+  late final name = TextEditingController(text: p.name);
+  late final template = TextEditingController(text: p.template);
+  late final pattern = TextEditingController(text: p.pattern);
+
+  @override
+  void dispose() {
+    name.dispose();
+    template.dispose();
+    pattern.dispose();
+    super.dispose();
+  }
+
+  String _preview(AppState app) {
+    final docs = app.archive.activeDocuments;
+    final sample = docs.isNotEmpty
+        ? docs.first
+        : Document(title: 'Bolletta Enel 03-2024', created: DateTime(2024, 3, 5));
+    final probe = StoragePath(name: 'x', template: template.text);
+    final copy = Document.fromJson(sample.toJson())..storagePathId = probe.id;
+    app.archive.storagePaths[probe.id] = probe;
+    try {
+      final (folders, file) = drivePath(app.archive, copy);
+      return [...folders, '$file.pdf'].join(' / ');
+    } finally {
+      app.archive.storagePaths.remove(probe.id);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.isNew ? 'Nuovo percorso' : 'Modifica percorso'),
+        actions: [
+          if (!widget.isNew)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () async {
+                if (!await confirm(context, title: 'Eliminare il percorso?', ok: 'Elimina', danger: true)) return;
+                app.deleteStoragePath(app.archive.storagePaths[p.id]!);
+                if (context.mounted) Navigator.pop(context);
+              },
+            ),
+          TextButton(
+            onPressed: () {
+              if (name.text.trim().isEmpty || template.text.trim().isEmpty) {
+                showMessage(context, 'Servono nome e modello');
+                return;
+              }
+              p
+                ..name = name.text.trim()
+                ..template = template.text.trim()
+                ..pattern = pattern.text.trim();
+              app.saveStoragePath(p);
+              Navigator.pop(context);
+            },
+            child: const Text('Salva'),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          TextField(
+            controller: name,
+            decoration: const InputDecoration(labelText: 'Nome', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: template,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Cartelle e nome del file',
+              helperText: 'Le / separano le cartelle; l\'ultima parte è il nome del file',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              for (final e in titlePlaceholders.entries)
+                ActionChip(
+                  label: Text(e.key, style: const TextStyle(fontSize: 11)),
+                  tooltip: e.value,
+                  onPressed: () => setState(() => template.text = '${template.text}${e.key}'),
+                ),
+              ActionChip(
+                label: const Text('/', style: TextStyle(fontSize: 11)),
+                tooltip: 'nuova cartella',
+                onPressed: () => setState(() => template.text = '${template.text}/'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text('Esempio: ${_preview(app)}', style: Theme.of(context).textTheme.bodySmall),
+          const Divider(height: 32),
+          Text('Quando usarlo in automatico', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<MatchAlgorithm>(
+            initialValue: p.algorithm,
+            isExpanded: true,
+            decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Algoritmo'),
+            items: [
+              for (final a in MatchAlgorithm.values) DropdownMenuItem(value: a, child: Text(a.label)),
+            ],
+            onChanged: (v) => setState(() => p.algorithm = v ?? MatchAlgorithm.none),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(p.algorithm.help, style: Theme.of(context).textTheme.bodySmall),
+          ),
+          if (p.algorithm.needsPattern)
+            TextField(
+              controller: pattern,
+              decoration: const InputDecoration(labelText: 'Parole o testo', border: OutlineInputBorder()),
+            ),
         ],
       ),
     );

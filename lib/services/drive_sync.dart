@@ -6,6 +6,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 
 import '../core/archive.dart';
+import '../core/models.dart';
+import '../core/organize.dart';
 import '../core/sync_merge.dart';
 import 'storage.dart';
 
@@ -22,6 +24,7 @@ class SyncOutcome {
     required this.uploaded,
     required this.downloaded,
     required this.removed,
+    required this.organized,
     required this.folderId,
     required this.canEdit,
     required this.ownerEmail,
@@ -31,11 +34,14 @@ class SyncOutcome {
   final int uploaded;
   final int downloaded;
   final int removed;
+
+  /// File rinominati o spostati nelle cartelle giuste.
+  final int organized;
   final String folderId;
   final bool canEdit;
   final String? ownerEmail;
 
-  /// File appena scaricati (servono le anteprime).
+  /// File appena scaricati (nomi interni, servono le anteprime).
   final List<String> downloadedNames;
 }
 
@@ -66,7 +72,7 @@ class DriveMember {
       };
 }
 
-/// Cartella "Paperdrive" condivisa da un'altra persona.
+/// Cartella condivisa da un'altra persona.
 class SharedFolder {
   SharedFolder(this.id, this.name, this.owner);
   final String id;
@@ -74,8 +80,23 @@ class SharedFolder {
   final String owner;
 }
 
-/// Sincronizza l'archivio con una cartella "Paperdrive" su Google Drive e
-/// gestisce la condivisione con altre persone.
+/// Un file dell'archivio su Drive.
+class _Remote {
+  _Remote(this.id, this.name, this.parents, this.version, this.tagged);
+  final String id;
+  final String name;
+  final List<String> parents;
+  final String? version;
+
+  /// Ha già le proprietà Paperdrive (altrimenti è un file della v0.1/v0.2).
+  final bool tagged;
+}
+
+/// Sincronizza l'archivio con la cartella "Paperdrive" su Google Drive.
+///
+/// Sul telefono i file hanno nomi interni (`<id>.pdf`, `<id>.archive2.pdf`);
+/// su Drive hanno nomi leggibili dentro cartelle come `Bolletta/2024/`.
+/// Il legame è nelle proprietà del file su Drive (pdArchive, pdDoc, pdKind).
 class DriveSync {
   DriveSync(this.storage);
 
@@ -86,6 +107,7 @@ class DriveSync {
   static const String folderName = 'Paperdrive';
   static const String indexName = 'paperdrive-index.json';
   static const String folderMime = 'application/vnd.google-apps.folder';
+  static final RegExp _internalName = RegExp(r'^[A-Za-z0-9-]+(\.archive\d+)?\.pdf$');
 
   bool _initialized = false;
   String? _lastToken;
@@ -137,15 +159,15 @@ class DriveSync {
     }
   }
 
-  static String _escape(String s) => s.replaceAll("'", "\\'");
+  static String _q(String s) => s.replaceAll(r'\', r'\\').replaceAll("'", r"\'");
 
   /// La mia cartella "Paperdrive" (creata se manca).
   Future<String> _ownFolder(drive.DriveApi api) async {
     final res = await api.files.list(
-      q: "name = '${_escape(folderName)}' and mimeType = '$folderMime' "
+      q: "name = '${_q(folderName)}' and mimeType = '$folderMime' "
           "and 'me' in owners and trashed = false",
       spaces: 'drive',
-      $fields: 'files(id,name,parents)',
+      $fields: 'files(id,name)',
     );
     final found = res.files ?? const <drive.File>[];
     if (found.isNotEmpty && found.first.id != null) return found.first.id!;
@@ -158,23 +180,59 @@ class DriveSync {
     return created.id!;
   }
 
-  Future<Map<String, (String, String?)>> _listFolder(drive.DriveApi api, String folder) async {
-    final out = <String, (String, String?)>{};
+  Future<List<drive.File>> _listAll(drive.DriveApi api, String q) async {
+    final out = <drive.File>[];
     String? token;
     do {
       final res = await api.files.list(
-        q: "'$folder' in parents and trashed = false",
+        q: q,
         spaces: 'drive',
         pageSize: 1000,
         pageToken: token,
-        $fields: 'nextPageToken, files(id,name,version)',
+        $fields: 'nextPageToken, files(id,name,parents,properties,version,mimeType)',
       );
-      for (final f in res.files ?? const <drive.File>[]) {
-        if (f.name != null && f.id != null) out[f.name!] = (f.id!, f.version);
-      }
+      out.addAll(res.files ?? const <drive.File>[]);
       token = res.nextPageToken;
     } while (token != null);
     return out;
+  }
+
+  static String? _logicalName(Map<String, String?>? props) {
+    final doc = props?['pdDoc'];
+    if (doc == null || doc.isEmpty) return null;
+    final rev = props?['pdRev'] ?? '0';
+    if (props?['pdKind'] == 'arch') return '$doc.archive$rev.pdf';
+    return rev == '0' ? '$doc.pdf' : '$doc.v$rev.pdf';
+  }
+
+  /// Tutti i file dell'archivio, per nome interno; più l'indice.
+  Future<(Map<String, _Remote>, _Remote?)> _remoteFiles(drive.DriveApi api, String root) async {
+    final out = <String, _Remote>{};
+    final tagged = await _listAll(
+      api,
+      "properties has { key='pdArchive' and value='${_q(root)}' } and trashed = false",
+    );
+    for (final f in tagged) {
+      final name = _logicalName(f.properties);
+      if (name == null || f.id == null) continue;
+      out[name] = _Remote(f.id!, f.name ?? '', f.parents ?? const [], f.version, true);
+    }
+    _Remote? index;
+    final top = await _listAll(api, "'${_q(root)}' in parents and trashed = false");
+    for (final f in top) {
+      final name = f.name ?? '';
+      if (f.id == null) continue;
+      if (name == indexName) {
+        index = _Remote(f.id!, name, f.parents ?? const [], f.version, false);
+      } else if (f.mimeType != folderMime &&
+          _logicalName(f.properties) == null &&
+          _internalName.hasMatch(name) &&
+          !out.containsKey(name)) {
+        // File delle versioni precedenti, ancora con il nome interno.
+        out[name] = _Remote(f.id!, name, f.parents ?? const [], f.version, false);
+      }
+    }
+    return (out, index);
   }
 
   Future<List<int>> _download(drive.DriveApi api, String id) async {
@@ -193,19 +251,76 @@ class DriveSync {
       drive.Media(Stream.value(bytes), bytes.length, contentType: type);
 
   /// Elimina un file; se non è mio (archivio condiviso) lo toglie dalla cartella.
-  Future<void> _remove(drive.DriveApi api, String id, String folder) async {
+  Future<void> _remove(drive.DriveApi api, _Remote f) async {
     try {
-      await api.files.delete(id);
+      await api.files.delete(f.id);
     } on drive.DetailedApiRequestError catch (e) {
       if (e.status == 404) return;
       if (e.status == 403) {
         try {
-          await api.files.update(drive.File(), id, removeParents: folder);
+          await api.files.update(drive.File(), f.id, removeParents: f.parents.join(','));
         } catch (_) {}
         return;
       }
       rethrow;
     }
+  }
+
+  /// Cartelle già trovate o create durante questa sincronizzazione.
+  final Map<String, String> _folders = {};
+
+  Future<String> _folderFor(drive.DriveApi api, String root, List<String> segments) async {
+    var parent = root;
+    var key = root;
+    for (final seg in segments) {
+      key = '$key/$seg';
+      final cached = _folders[key];
+      if (cached != null) {
+        parent = cached;
+        continue;
+      }
+      final res = await api.files.list(
+        q: "'${_q(parent)}' in parents and name = '${_q(seg)}' "
+            "and mimeType = '$folderMime' and trashed = false",
+        spaces: 'drive',
+        $fields: 'files(id)',
+      );
+      final found = res.files ?? const <drive.File>[];
+      final id = found.isNotEmpty && found.first.id != null
+          ? found.first.id!
+          : (await api.files.create(
+              drive.File()
+                ..name = seg
+                ..mimeType = folderMime
+                ..parents = [parent],
+              $fields: 'id',
+            ))
+              .id!;
+      _folders[key] = id;
+      parent = id;
+    }
+    return parent;
+  }
+
+  Map<String, String> _props(String root, Document d, bool archived) => {
+        'pdArchive': root,
+        'pdDoc': d.id,
+        'pdKind': archived ? 'arch' : 'orig',
+        'pdRev': archived ? '${d.archiveRev}' : '${d.fileRev}',
+      };
+
+  /// Dove deve stare un file su Drive: cartella e nome leggibile.
+  Future<(String, String)> _placeOf(
+    drive.DriveApi api,
+    Archive a,
+    String root,
+    Document d,
+    bool archived,
+  ) async {
+    final (folders, _) = drivePath(a, d);
+    final name = driveFileName(a, d, archived: archived);
+    final parent = a.config.organizeDrive ? await _folderFor(api, root, folders) : root;
+    return (parent, name);
   }
 
   /// Esegue la sincronizzazione completa e restituisce l'archivio unito.
@@ -223,11 +338,12 @@ class DriveSync {
     void Function(String)? status,
   }) async {
     status?.call('Connessione a Google Drive…');
-    final folder = folderId ?? await _ownFolder(api);
+    _folders.clear();
+    final root = folderId ?? await _ownFolder(api);
     final drive.File info;
     try {
       info = await api.files.get(
-        folder,
+        root,
         $fields: 'id,trashed,capabilities(canEdit),owners(emailAddress,displayName)',
       ) as drive.File;
     } on drive.DetailedApiRequestError catch (e) {
@@ -242,17 +358,16 @@ class DriveSync {
     final ownerEmail = owners.isEmpty ? null : owners.first.emailAddress;
 
     var current = local;
-    var uploaded = 0, removed = 0;
+    var uploaded = 0, removed = 0, organized = 0;
     final downloadedNames = <String>[];
     for (var attempt = 0; attempt < 3; attempt++) {
-      final remoteFiles = await _listFolder(api, folder);
+      var (remoteFiles, index) = await _remoteFiles(api, root);
 
       status?.call('Confronto degli archivi…');
       Archive remote = Archive();
       String? remoteRaw;
-      final index = remoteFiles[indexName];
       if (index != null) {
-        remoteRaw = utf8.decode(await _download(api, index.$1));
+        remoteRaw = utf8.decode(await _download(api, index.id));
         remote = Archive.fromJson((jsonDecode(remoteRaw) as Map).cast<String, dynamic>());
       }
       final (merged, _) = mergeArchives(current, remote);
@@ -261,7 +376,7 @@ class DriveSync {
       final plan = planFiles(
         merged,
         localFiles: await storage.localFileNames(),
-        remoteFiles: remoteFiles.keys.where((n) => n.endsWith('.pdf')).toSet(),
+        remoteFiles: remoteFiles.keys.toSet(),
         canWrite: canWrite,
       );
 
@@ -269,14 +384,19 @@ class DriveSync {
       for (final name in plan.upload) {
         i++;
         status?.call('Caricamento su Drive: $i di ${plan.upload.length}');
+        final d = merged.documents[docIdOfFile(name)]!;
+        final archived = name.contains('.archive');
+        final (parent, driveName) = await _placeOf(api, merged, root, d, archived);
         final bytes = await storage.docFile(name).readAsBytes();
-        await api.files.create(
+        final created = await api.files.create(
           drive.File()
-            ..name = name
-            ..parents = [folder],
+            ..name = driveName
+            ..parents = [parent]
+            ..properties = _props(root, d, archived),
           uploadMedia: _media(bytes, 'application/pdf'),
           $fields: 'id',
         );
+        remoteFiles[name] = _Remote(created.id!, driveName, [parent], null, true);
         uploaded++;
       }
 
@@ -284,7 +404,7 @@ class DriveSync {
       for (final name in plan.download) {
         i++;
         status?.call('Download da Drive: $i di ${plan.download.length}');
-        final bytes = await _download(api, remoteFiles[name]!.$1);
+        final bytes = await _download(api, remoteFiles[name]!.id);
         final target = storage.docFile(name);
         final tmp = File('${target.path}.part');
         await tmp.writeAsBytes(bytes, flush: true);
@@ -293,17 +413,49 @@ class DriveSync {
       }
 
       for (final name in plan.deleteRemote) {
-        await _remove(api, remoteFiles[name]!.$1, folder);
+        await _remove(api, remoteFiles.remove(name)!);
         removed++;
       }
       for (final name in plan.deleteLocal) {
         final f = storage.docFile(name);
         if (await f.exists()) await f.delete();
-        if (!name.contains('.archive')) {
+        final owner = merged.documents[docIdOfFile(name)];
+        if (owner == null || owner.deleted) {
           final thumb = storage.thumbFile(docIdOfFile(name));
           if (await thumb.exists()) await thumb.delete();
         }
         removed++;
+      }
+
+      // Ogni file nella sua cartella (categoria/anno) e con il nome giusto.
+      if (canWrite) {
+        for (final d in merged.documents.values) {
+          if (d.deleted) continue;
+          for (final name in d.fileNames) {
+            final r = remoteFiles[name];
+            if (r == null) continue;
+            final archived = name.contains('.archive');
+            final (parent, driveName) = await _placeOf(api, merged, root, d, archived);
+            final moved = !(r.parents.length == 1 && r.parents.first == parent);
+            if (r.name == driveName && !moved && r.tagged) continue;
+            status?.call('Archiviazione: $driveName');
+            try {
+              await api.files.update(
+                drive.File()
+                  ..name = driveName
+                  ..properties = _props(root, d, archived),
+                r.id,
+                addParents: moved ? parent : null,
+                removeParents: moved && r.parents.isNotEmpty ? r.parents.join(',') : null,
+                $fields: 'id',
+              );
+              organized++;
+            } on drive.DetailedApiRequestError catch (e) {
+              // File di un'altra persona che non posso spostare: resta dov'è.
+              if (e.status != 403) rethrow;
+            }
+          }
+        }
       }
 
       final mergedRaw = jsonEncode(merged.toJson());
@@ -311,8 +463,8 @@ class DriveSync {
 
       if (index != null) {
         // Qualcun altro ha aggiornato l'indice nel frattempo? Si riunisce.
-        final now = await api.files.get(index.$1, $fields: 'version') as drive.File;
-        if (now.version != index.$2 && attempt < 2) {
+        final now = await api.files.get(index.id, $fields: 'version') as drive.File;
+        if (now.version != index.version && attempt < 2) {
           status?.call('Indice aggiornato da un altro dispositivo, nuova unione…');
           continue;
         }
@@ -323,14 +475,14 @@ class DriveSync {
         await api.files.create(
           drive.File()
             ..name = indexName
-            ..parents = [folder],
+            ..parents = [root],
           uploadMedia: _media(bytes, 'application/json'),
           $fields: 'id',
         );
       } else {
         await api.files.update(
           drive.File(),
-          index.$1,
+          index.id,
           uploadMedia: _media(bytes, 'application/json'),
           $fields: 'id',
         );
@@ -343,21 +495,26 @@ class DriveSync {
       uploaded: uploaded,
       downloaded: downloadedNames.length,
       removed: removed,
-      folderId: folder,
+      organized: organized,
+      folderId: root,
       canEdit: canWrite,
       ownerEmail: ownerEmail,
       downloadedNames: downloadedNames,
     );
   }
 
+  Future<_Remote?> _find(drive.DriveApi api, String root, String logical) async {
+    final (files, _) = await _remoteFiles(api, root);
+    return files[logical];
+  }
+
   /// Scarica un singolo PDF che manca sul telefono.
   Future<bool> fetchFile(String fileName, {required String? folderId}) =>
       _withApi((api) async {
-        final folder = folderId ?? await _ownFolder(api);
-        final files = await _listFolder(api, folder);
-        final f = files[fileName];
+        final root = folderId ?? await _ownFolder(api);
+        final f = await _find(api, root, fileName);
         if (f == null) return false;
-        final bytes = await _download(api, f.$1);
+        final bytes = await _download(api, f.id);
         await storage.docFile(fileName).writeAsBytes(bytes, flush: true);
         return true;
       });
@@ -381,7 +538,6 @@ class DriveSync {
           final owner = o.isEmpty ? '' : (o.first.displayName ?? o.first.emailAddress ?? '');
           out.add(SharedFolder(f.id!, f.name ?? '', owner));
         }
-        // Prima quelle che si chiamano Paperdrive.
         out.sort((a, b) {
           final pa = a.name.toLowerCase().contains('paperdrive') ? 0 : 1;
           final pb = b.name.toLowerCase().contains('paperdrive') ? 0 : 1;
@@ -401,7 +557,9 @@ class DriveSync {
             DriveMember(
               permissionId: p.id ?? '',
               email: p.emailAddress ?? '',
-              name: p.displayName ?? p.emailAddress ?? (p.type == 'anyone' ? 'Chiunque abbia il link' : ''),
+              name: p.displayName ??
+                  p.emailAddress ??
+                  (p.type == 'anyone' ? 'Chiunque abbia il link' : ''),
               role: p.role ?? '',
               type: p.type ?? '',
             ),
@@ -440,9 +598,8 @@ class DriveSync {
 
   /// Crea un link pubblico (chiunque abbia il link può vedere) per un file.
   Future<String> createPublicLink(String? folderId, String fileName) => _withApi((api) async {
-        final folder = folderId ?? await _ownFolder(api);
-        final files = await _listFolder(api, folder);
-        final f = files[fileName];
+        final root = folderId ?? await _ownFolder(api);
+        final f = await _find(api, root, fileName);
         if (f == null) {
           throw Exception('Il file non è ancora su Drive: sincronizza e riprova.');
         }
@@ -450,21 +607,20 @@ class DriveSync {
           drive.Permission()
             ..type = 'anyone'
             ..role = 'reader',
-          f.$1,
+          f.id,
         );
-        final meta = await api.files.get(f.$1, $fields: 'webViewLink') as drive.File;
-        return meta.webViewLink ?? 'https://drive.google.com/file/d/${f.$1}/view';
+        final meta = await api.files.get(f.id, $fields: 'webViewLink') as drive.File;
+        return meta.webViewLink ?? 'https://drive.google.com/file/d/${f.id}/view';
       });
 
   Future<void> revokePublicLink(String? folderId, String fileName) => _withApi((api) async {
-        final folder = folderId ?? await _ownFolder(api);
-        final files = await _listFolder(api, folder);
-        final f = files[fileName];
+        final root = folderId ?? await _ownFolder(api);
+        final f = await _find(api, root, fileName);
         if (f == null) return;
-        final perms = await api.permissions.list(f.$1, $fields: 'permissions(id,type)');
+        final perms = await api.permissions.list(f.id, $fields: 'permissions(id,type)');
         for (final p in perms.permissions ?? const <drive.Permission>[]) {
           if (p.type == 'anyone' && p.id != null) {
-            await api.permissions.delete(f.$1, p.id!);
+            await api.permissions.delete(f.id, p.id!);
           }
         }
       });
