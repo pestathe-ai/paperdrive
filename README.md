@@ -7,6 +7,22 @@ sincronizza su **Google Drive**. L'APK viene compilato da GitHub Actions.
 
 ## Funzioni
 
+### Archiviazione automatica (v0.3)
+
+Ogni documento che **scansioni**, **importi**, ricevi per **email** o **condividi verso Paperdrive** da un'altra app (menu *Condividi* o *Apri con*, anche più file insieme) viene, senza altri passaggi:
+
+1. **letto** (testo del PDF o OCR, con versione PDF/A ricercabile);
+2. **diviso** se nella scansione c'è un foglio separatore con codice a barre (PATCH T) e numerato con l'**ASN** letto dall'etichetta;
+3. **classificato**: categoria (14 categorie predefinite già pronte: Bolletta, Fattura, Scontrino, Banca, Busta paga, Tasse, Sanità, Assicurazione, Contratto, Auto, Casa, Scuola, Lavoro, Garanzia), corrispondente, tag, percorso; vince la regola più pertinente;
+4. **rinominato** con un modello, es. `Bolletta Enel 03-2024`;
+5. **archiviato su Google Drive** in cartelle per categoria e anno, es. `Paperdrive/Bolletta/2024/2024-03-05 Bolletta Enel 03-2024.pdf` (modello modificabile, più *percorsi* personalizzati come in Paperless). Se cambi categoria o titolo, il file su Drive viene spostato e rinominato.
+
+Tutto si regola da *Menu → Archiviazione automatica*, con anteprima del risultato.
+
+### Altre funzioni
+
+- **Modifica pagine**: ruota, elimina, riordina; **dividi** un documento in più parti; **unisci** più documenti (selezione multipla).
+- **Cronologia** di ogni documento (chi ha cambiato cosa e quando) e **documenti simili**.
 - **Scansione** con lo scanner di documenti di Google (ritaglio, raddrizzamento, più pagine) e **importazione** di PDF e immagini.
 - **OCR sul telefono** (ML Kit, testo latino): i PDF digitali usano il loro testo, quelli scansionati vengono letti pagina per pagina.
 - **Versione archiviata PDF/A** (novità v0.2): per scansioni e foto viene creato un PDF/A-3b con il testo dell'OCR invisibile sopra l'immagine, quindi ricercabile e copiabile in qualsiasi lettore PDF. Validato con veraPDF in CI.
@@ -46,7 +62,7 @@ L'app usa la cartella `Paperdrive` (e quelle che altre persone condividono con t
 - In un archivio condiviso i permessi li applica Google Drive: chi ha accesso vede tutti i documenti (niente documenti privati per singolo utente).
 - La versione PDF/A viene creata per scansioni, foto e PDF senza testo; per i PDF digitali si può crearla dal menu del documento.
 - L'indice è un unico file JSON: pensato per centinaia/qualche migliaio di documenti. Se due persone modificano lo stesso documento quasi insieme, vince l'ultima modifica.
-- Non presenti: percorsi di archiviazione personalizzati, cartella di importazione automatica, cronologia delle modifiche.
+- Non presenti: cartella di importazione automatica, OCR per alfabeti non latini, API per altre app.
 - La firma dell'APK è una chiave di sviluppo pubblica (vedi `tool/signing/`).
 
 ## Sviluppo
