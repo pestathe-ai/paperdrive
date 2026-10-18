@@ -90,11 +90,11 @@ DateTime? detectDate(String text, {DateTime? now}) {
     if (_ignoredContext.hasMatch(before)) continue;
     return d;
   }
-  return all.isEmpty ? null : all.first.$2;
+  return null;
 }
 
 final RegExp _ignoredContext = RegExp(
-  r'\b(legge|l\.|d\.?\s?p\.?\s?r\.?|d\.?\s?lgs\.?|decreto|g\.\s?u\.|gazzetta|nato|nata|nascita|circolare|regolamento|art\.)[^\n]{0,30}$',
+  r'\b(legge|l\.|d\.?\s?p\.?\s?r\.?|d\.?\s?lgs\.?|decreto|g\.\s?u\.|gazzetta|nato|nata|nascita|circolare|regolamento|art\.)(?:(?!\d{1,2}[./-]\d{1,2}[./-]\d{2,4})[^\n]){0,30}$',
 );
 
 /// Titolo suggerito dal testo: la prima riga significativa.
