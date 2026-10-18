@@ -156,8 +156,43 @@ String? detectKind(String text) {
   return null;
 }
 
-/// L'ente o l'azienda che compare per primo nel testo (di solito l'intestazione).
-String? detectIssuer(String text) {
+/// L'ente o l'azienda che compare per primo nel testo (di solito
+/// l'intestazione); se non è tra quelli noti, cerca professionisti
+/// (notaio, avvocato, studio…) e società (S.p.A., S.r.l.…) nell'intestazione.
+String? detectIssuer(String text) => _knownIssuer(text) ?? _professional(text) ?? _company(text);
+
+String? _professional(String text) {
+  final head = text.length > 2500 ? text.substring(0, 2500) : text;
+  final re = RegExp(
+    r"\b(Notaio(?: Dott\.?)?|Avv\.|Avvocato|Studio (?:Notarile|Legale|Medico|Dentistico|Tecnico|Commercialista)|Dott\.(?:ssa)?|Dr\.|Geom\.|Ing\.|Arch\.|Rag\.)[ \t]+([A-ZÀ-Ý][A-Za-zÀ-ÿ'.]+(?:[ \t][A-ZÀ-Ý][A-Za-zÀ-ÿ'.]+){0,3})",
+  );
+  String? studio;
+  for (final m in re.allMatches(head)) {
+    final title = m.group(1)!.replaceAll(RegExp(r'\s+'), ' ');
+    final name = _cleanName(m.group(2)!.split(RegExp(r'\s{2,}')).first);
+    final words = name.split(' ').where((w) => w.length > 1).toList();
+    if (title.startsWith('Studio')) {
+      studio ??= '$title $name';
+      continue;
+    }
+    // Un professionista con nome e cognome è il più preciso.
+    if (words.length >= 2) return '$title $name';
+  }
+  return studio;
+}
+
+String? _company(String text) {
+  final head = text.length > 2500 ? text.substring(0, 2500) : text;
+  final m = RegExp(
+    r"([A-ZÀ-Ý0-9][A-Za-zÀ-ÿ0-9&'.\- ]{1,40}?)\s*(S\.?\s?p\.?\s?A\.?|S\.?\s?r\.?\s?l\.?(?:s\.?)?|S\.?\s?n\.?\s?c\.?|S\.?\s?a\.?\s?s\.?)(?![A-Za-z])",
+  ).firstMatch(head);
+  if (m == null) return null;
+  final name = _cleanName(m.group(1)!.trim().split(RegExp(r'\s{2,}')).last);
+  if (name.length < 2) return null;
+  return name;
+}
+
+String? _knownIssuer(String text) {
   final t = normalize(text.length > 8000 ? text.substring(0, 8000) : text);
   String? best;
   var bestPos = 1 << 30;
@@ -193,17 +228,36 @@ String? _normalizeAmount(String raw) {
   return '$b,$dec €';
 }
 
+/// Parole che precedono l'importo principale, dalla più affidabile.
+const List<String> _amountLabels = [
+  r'importo\s+pagato',
+  r'totale\s+pagato',
+  r'netto\s+(?:a|da)\s+pagare',
+  r'totale\s+da\s+pagare',
+  r'importo\s+da\s+pagare',
+  r'totale\s+(?:documento|fattura|bolletta|complessivo|lordo|generale)',
+  r'importo\s+(?:bonifico|operazione|disposto|totale|addebitato|accreditato)',
+  r'da\s+pagare',
+  r'saldo\s+finale',
+  r'importo',
+  r'totale',
+  r'ammontare',
+];
+
+const String _number = r'(\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2}(?!\d))';
+
 /// L'importo principale (es. "150,00 €"), cercato vicino a parole come
-/// "importo", "totale", "da pagare".
+/// "importo pagato", "totale da pagare", "importo".
 String? detectAmount(String text) {
   final t = text.replaceAll(' ', ' ');
-  final keyed = RegExp(
-    r'(importo(?:\s+(?:bonifico|operazione|totale|da\s+pagare|disposto))?|totale(?:\s+(?:da\s+pagare|documento|fattura|bolletta|complessivo))?|netto\s+(?:a|da)\s+pagare|da\s+pagare|saldo\s+finale|ammontare)\s*[:\-]?\s*(?:euro|eur|€)?\s*'
-    r'(\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2}(?!\d))',
-    caseSensitive: false,
-  );
-  final m = keyed.firstMatch(t);
-  if (m != null) return _normalizeAmount(m.group(2)!);
+  for (final label in _amountLabels) {
+    // Sulla stessa riga, dopo l'etichetta (al massimo qualche parola in mezzo).
+    final m = RegExp(
+      '\\b$label\\b[^\\n\\d]{0,25}?(?:euro|eur|€)?\\s*$_number',
+      caseSensitive: false,
+    ).firstMatch(t);
+    if (m != null) return _normalizeAmount(m.group(1)!);
+  }
   final euro = RegExp(
     r'(?:€|eur|euro)\s*(\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+,\d{2})|(\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+,\d{2})\s*(?:€|eur\b|euro)',
     caseSensitive: false,
@@ -251,6 +305,25 @@ String? detectNumber(String text) {
   return n == null || n.isEmpty ? null : n;
 }
 
+/// Oggetto o causale (es. "Atto di acquisto", "affitto ottobre").
+String? detectSubject(String text) {
+  final m = RegExp(
+    r'(?:^|\n)\s*(?:oggetto|causale|descrizione operazione|motivazione)\s*[:\-]?\s*\n?\s*([^\n]{3,90})',
+    caseSensitive: false,
+  ).firstMatch(text);
+  if (m == null) return null;
+  var s = m.group(1)!.split(RegExp(r'\s{3,}')).first;
+  // Toglie date, riferimenti e numeri di repertorio in coda.
+  s = s.replaceAll(
+    RegExp(r'\s+(?:in data|del|dd\.?|data|rep\.?|repertorio|prot\.?|n\.)\s+.*$', caseSensitive: false),
+    '',
+  );
+  s = s.replaceAll(RegExp(r'\s*[-–,;:]\s*$'), '').trim();
+  if (s.length > 40) s = '${s.substring(0, 40).trim()}…';
+  if (RegExp(r'[A-Za-zÀ-ÿ]{3,}').allMatches(s).isEmpty) return null;
+  return s;
+}
+
 /// Comune citato (utile per visure e atti).
 String? detectMunicipality(String text) {
   final m = RegExp(r"\b[Cc]omune\s+di\s*[:\-]?\s*([A-ZÀ-Ý][A-Za-zÀ-ÿ' ]{1,30}?)(?=\s*(?:\(|\n|,|-|\bcodice\b|\bprovincia\b|$))")
@@ -262,13 +335,22 @@ String? detectMunicipality(String text) {
 
 /// Dati principali letti dal documento.
 class DocFacts {
-  DocFacts({this.kind, this.issuer, this.amount, this.beneficiary, this.number, this.municipality});
+  DocFacts({
+    this.kind,
+    this.issuer,
+    this.amount,
+    this.beneficiary,
+    this.number,
+    this.municipality,
+    this.subject,
+  });
   final String? kind;
   final String? issuer;
   final String? amount;
   final String? beneficiary;
   final String? number;
   final String? municipality;
+  final String? subject;
 
   /// Dettaglio da mettere nel nome, a seconda del tipo.
   String get details {
@@ -282,6 +364,12 @@ class DocFacts {
     if (municipality != null &&
         const {'Visura catastale', 'Planimetria catastale', 'Atto di compravendita', 'IMU', 'TARI'}.contains(kind)) {
       parts.add('Comune di $municipality');
+    }
+    if (subject != null &&
+        const {'Fattura', 'Nota di credito', 'Ricevuta di pagamento', 'Bonifico', 'Preventivo', 'Scontrino', 'Avviso di pagamento PagoPA', null}
+            .contains(kind) &&
+        !parts.any((p) => p.toLowerCase().contains(subject!.toLowerCase()))) {
+      parts.add('($subject)');
     }
     return parts.join(' ');
   }
@@ -319,6 +407,7 @@ DocFacts extractFacts(String text) {
     beneficiary: kind == 'Bonifico' ? detectBeneficiary(text) : null,
     number: detectNumber(text),
     municipality: detectMunicipality(text),
+    subject: detectSubject(text),
   );
 }
 
@@ -345,7 +434,22 @@ String? meaningfulFileName(String originalName) {
   // Servono almeno due parole "vere" (3+ lettere) oppure una parola lunga.
   final words = RegExp(r'[A-Za-zÀ-ÿ]{3,}').allMatches(base).map((m) => m.group(0)!).toList();
   final letters = RegExp(r'[A-Za-zÀ-ÿ]').allMatches(base).length;
-  if (words.length < 2 || letters < base.replaceAll(' ', '').length * 0.5) return null;
+  final chars = base.replaceAll(' ', '').length;
+  final digits = RegExp(r'\d').allMatches(base).length;
+  if (words.length < 2 || letters < chars * 0.5 || digits > chars * 0.25) return null;
+  // Parole abbreviate ("Fatt.", "Elettr.") o di servizio non descrivono il documento.
+  const filler = {
+    'stampa', 'copia', 'file', 'scan', 'pdf', 'doc', 'documento', 'allegato', 'print',
+    'fatt', 'elettr', 'ric', 'rif', 'prot', 'img', 'download', 'definitivo', 'firmato', 'final',
+  };
+  final real = words.where((w) {
+    final lw = w.toLowerCase();
+    if (filler.contains(lw)) return false;
+    final i = base.indexOf(w) + w.length;
+    final abbreviated = i < base.length && base[i] == '.' && w.length <= 6;
+    return !abbreviated && w.length >= 4;
+  }).toList();
+  if (real.length < 2) return null;
   // Codici tipo hash o numeri di pratica non sono nomi.
   if (RegExp(r'^[a-f0-9\- ]{12,}$', caseSensitive: false).hasMatch(base)) return null;
   // Spaziature dopo trattini/punti.

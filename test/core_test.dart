@@ -533,7 +533,7 @@ void main() {
       expect(f.issuer, 'Intesa Sanpaolo');
       expect(f.amount, '1.250,00 €');
       expect(f.beneficiary, 'Mario Rossi');
-      expect(f.details, 'a Mario Rossi');
+      expect(f.details, 'a Mario Rossi (affitto ottobre)');
       final v = extractFacts(visura);
       expect(v.kind, 'Visura catastale');
       expect(v.issuer, 'Agenzia delle Entrate');
@@ -570,7 +570,7 @@ void main() {
         ..correspondentId = intesa.id;
       applyMatches(a, d);
       expect(a.type(d.typeId)?.name, 'Banca');
-      expect(autoTitle(a, d), 'Bonifico a Mario Rossi 1.250,00 € - Intesa Sanpaolo');
+      expect(autoTitle(a, d), 'Bonifico a Mario Rossi (affitto ottobre) 1.250,00 € - Intesa Sanpaolo');
 
       final ade = NamedEntity(name: 'Agenzia delle Entrate');
       a.correspondents[ade.id] = ade;
@@ -587,6 +587,65 @@ void main() {
       expect(c.titleTemplate, ArchiveConfig.defaultTitleTemplate);
       final custom = ArchiveConfig.fromJson({'title': '{title} {asn}'});
       expect(custom.titleTemplate, '{title} {asn}');
+    });
+  });
+
+  group('fattura di un professionista', () {
+    // Testo come esce da una fattura elettronica stampata (dati di fantasia).
+    const fattura = '''
+                                                           AB NOTAI
+                                                    Studio Notarile Associato
+                                    20900 Monza (MB) - Via Roma n. 2 - Tel. 039.000000
+                                                      C.F. e P.IVA 01234567890
+
+Notaio Paolo Bianchi
+                                                                                            Gentili Signori
+
+                                                                                            ROSSI MARIO
+Fattura n.634 - MG del 29/09/2025                                                           Codice Fiscale RSSMRA80A01F205X
+
+Oggetto:
+Atto di acquisto in data 29/9/2025 - rep 4321/3465
+
+Spese anticipate per conto cliente, escluse dalla base imponibile ai sensi
+dell'art.15, comma 3 D.P.R. 633/72
+Imposta di Registro                                                                                                                1.503,00
+                                                                                   Totale Compensi                                 1.260,49
+                                                                                   IVA 22 % su 1.260,49                              277,31
+                                                                                   Totale Lordo                                   3.180,00
+                                                                                   Importo Pagato                                 3.180,00
+PAGATO il 29/09/2025
+''';
+
+    test('cosa, chi, quanto, oggetto', () {
+      final f = extractFacts(fattura);
+      expect(f.kind, 'Fattura');
+      expect(f.issuer, 'Notaio Paolo Bianchi');
+      expect(f.amount, '3.180,00 €');
+      expect(f.number, '634');
+      expect(f.subject, 'Atto di acquisto');
+    });
+
+    test('nome illeggibile sostituito da uno descrittivo', () {
+      expect(meaningfulFileName('Stampa_Fatt._Elettr.MG_634_29_09_2025_1_1.pdf'), isNull);
+      final a = Archive.starter();
+      final d = Document(
+        title: 'x',
+        originalName: 'Stampa_Fatt._Elettr.MG_634_29_09_2025_1_1.pdf',
+        content: fattura,
+      );
+      applyMatches(a, d);
+      expect(a.type(d.typeId)?.name, 'Fattura');
+      final notaio = NamedEntity(name: detectIssuer(fattura)!);
+      a.correspondents[notaio.id] = notaio;
+      d.correspondentId = notaio.id;
+      expect(autoTitle(a, d), 'Fattura n. 634 (Atto di acquisto) 3.180,00 € - Notaio Paolo Bianchi');
+    });
+
+    test('società e studi', () {
+      expect(detectIssuer('ROSSI COSTRUZIONI S.r.l.\nVia Po 1'), 'Rossi Costruzioni');
+      expect(detectIssuer('Studio Legale Verdi\nVia Po 1'), 'Studio Legale Verdi');
+      expect(detectIssuer('Avv. Laura Neri\nparcella'), 'Avv. Laura Neri');
     });
   });
 }
