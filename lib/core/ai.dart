@@ -142,8 +142,9 @@ AiResult? parseAiResponse(String raw, {DateTime? now}) {
     } catch (_) {
       // Errori tipici: virgola finale, apici singoli.
       body = body
-          .replaceAll(RegExp(r',\s*([}\]])'), r'$1')
-          .replaceAllMapped(RegExp(r"'([^'\n]*)'"), (m) => '"${m[1]}"');
+          .replaceAllMapped(RegExp(r',\s*([}\]])'), (m) => m[1]!)
+          .replaceAllMapped(RegExp(r"([{,]\s*)'([^'\n]*)'\s*:"), (m) => '${m[1]}"${m[2]}":')
+          .replaceAllMapped(RegExp(r":\s*'([^'\n]*)'(\s*[,}])"), (m) => ': "${m[1]}"${m[2]}');
     }
   }
   if (j == null) return null;
