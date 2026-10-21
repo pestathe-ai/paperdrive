@@ -68,6 +68,16 @@ cat > android/app/proguard-rules.pro <<'RULES'
 -keep class com.google.android.gms.internal.mlkit_** { *; }
 -keep class com.google.android.gms.vision.** { *; }
 -keep class com.google_mlkit_** { *; }
+# Plugin chiamati da Dart via JNI (shared_preferences, download del modello
+# AI): R8 non deve rinominare le classi né i tipi Kotlin nelle firme,
+# altrimenti NoSuchMethodError.
+-keep class io.flutter.plugins.** { *; }
+-keep class kotlin.coroutines.** { *; }
+-keep class kotlin.jvm.functions.** { *; }
+-keep class kotlinx.coroutines.** { *; }
+-keep class com.bbflight.** { *; }
+-keep class com.github.dart_lang.jni.** { *; }
+-keep class dev.flutterberlin.** { *; }
 RULES
 
 flutter pub get
