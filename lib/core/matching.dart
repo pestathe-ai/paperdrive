@@ -142,8 +142,7 @@ MatchResult computeMatches(Archive archive, Document doc, {DocumentClassifier? c
   final predTags = classifier?.predictTags(text) ?? const <String>[];
   final tags = <String>{};
   for (final t in archive.activeTags) {
-    if (matchesRule(t, text) ||
-        (t.algorithm == MatchAlgorithm.auto && predTags.contains(t.id))) {
+    if (matchesRule(t, text) || (!t.isInbox && predTags.contains(t.id))) {
       tags.add(t.id);
     }
   }
@@ -159,6 +158,10 @@ MatchResult computeMatches(Archive archive, Document doc, {DocumentClassifier? c
         bestScore = score;
         best = e.id;
       }
+    }
+    // Nessuna regola: vale quello che l'app ha imparato dalle correzioni.
+    if (best == null && predicted != null && entities.any((e) => e.id == predicted)) {
+      return predicted;
     }
     return best;
   }

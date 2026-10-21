@@ -339,17 +339,20 @@ class DocumentClassifier {
   /// documenti utilizzabili (come il "No training data available").
   static DocumentClassifier? train(Archive a) {
     final inbox = a.inboxTags.map((t) => t.id).toSet();
+    // Come Paperless i documenti esaminati; in più quelli corretti a mano.
     final docs = a.activeDocuments
-        .where((d) => !d.tagIds.any(inbox.contains) && d.content.trim().isNotEmpty)
+        .where((d) => (!d.tagIds.any(inbox.contains) || d.userEdited) && d.content.trim().isNotEmpty)
         .toList()
       ..sort((x, y) => x.id.compareTo(y.id));
     if (docs.isEmpty) return null;
 
-    bool auto(Matchable? m) => m != null && m.algorithm == MatchAlgorithm.auto;
+    // Paperless impara solo le voci "Automatica"; qui anche quelle assegnate
+    // a mano con altre regole, così ogni correzione insegna qualcosa.
+    bool auto(Matchable? m) => m != null;
     final labelsCorr = [for (final d in docs) auto(a.correspondent(d.correspondentId)) ? d.correspondentId : null];
     final labelsType = [for (final d in docs) auto(a.type(d.typeId)) ? d.typeId : null];
     final labelsPath = [for (final d in docs) auto(a.storagePath(d.storagePathId)) ? d.storagePathId : null];
-    final autoTags = a.activeTags.where((t) => t.algorithm == MatchAlgorithm.auto).map((t) => t.id).toSet();
+    final autoTags = a.activeTags.where((t) => !t.isInbox).map((t) => t.id).toSet();
     final labelsTags = [for (final d in docs) d.tagIds.where(autoTags.contains).toSet()];
 
     final hasAny = labelsCorr.any((l) => l != null) ||

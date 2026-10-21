@@ -286,6 +286,8 @@ Map<String, String> placeholderValues(Archive a, Document d, {bool facts = false
     if (f != null) '{kind}': f.label ?? a.type(d.typeId)?.name ?? '',
     if (f != null) '{details}': f.details,
     if (f != null) '{amount}': f.amountUseful ? f.amount! : '',
+    if (f != null) '{importo}': f.amount ?? '',
+    if (f != null) '{numero}': f.number ?? '',
   };
 }
 
@@ -306,7 +308,7 @@ String fillPlaceholders(
   final values = placeholderValues(
     a,
     d,
-    facts: template.contains('{kind}') || template.contains('{details}') || template.contains('{amount}'),
+    facts: RegExp(r'\{(kind|details|amount|importo|numero)\}').hasMatch(template),
   );
   String c(String v) => clean == null ? v : clean(v);
   var out = template;

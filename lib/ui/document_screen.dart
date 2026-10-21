@@ -303,6 +303,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
           textCapitalization: TextCapitalization.sentences,
           onChanged: (v) {
             d.title = v.trim();
+            d.titleEdited = true;
             app.saveDocument(d);
           },
         ),

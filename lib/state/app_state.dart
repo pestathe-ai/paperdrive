@@ -233,6 +233,10 @@ class AppState extends ChangeNotifier {
 
   Future<List<String>> _ingestAll(List<StagedInput> inputs) async {
     final messages = <String>[];
+    // Prima di classificare, il classificatore deve conoscere le ultime correzioni.
+    busy = 'Preparazione…';
+    notifyListeners();
+    await retrain();
     try {
       for (var i = 0; i < inputs.length; i++) {
         final prefix = inputs.length > 1 ? '(${i + 1}/${inputs.length}) ' : '';
@@ -468,7 +472,7 @@ class AppState extends ChangeNotifier {
   /// Fine della modifica di un documento: registra la cronologia ed esegue
   /// i flussi "modificato".
   void documentEdited(Document d, Map<String, dynamic> before) {
-    logChanges(archive, before, d);
+    if (logChanges(archive, before, d)) d.userEdited = true;
     _runUpdatedFlows(d);
     changed();
   }
@@ -485,6 +489,7 @@ class AppState extends ChangeNotifier {
       final before = d.toJson();
       change(d);
       if (logChanges(archive, before, d)) {
+        d.userEdited = true;
         d.touch();
         _runUpdatedFlows(d);
       }

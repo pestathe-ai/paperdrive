@@ -294,6 +294,8 @@ class Document with Syncable {
     this.shareLink,
     this.storagePathId,
     this.fileRev = 0,
+    this.userEdited = false,
+    this.titleEdited = false,
     List<HistoryEntry>? history,
     int? modified,
     this.deleted = false,
@@ -377,6 +379,12 @@ class Document with Syncable {
   /// Versione del PDF originale: cambia quando si modificano le pagine.
   int fileRev;
 
+  /// Corretto a mano dall'utente: vale come esempio per l'apprendimento.
+  bool userEdited;
+
+  /// Titolo scelto a mano dall'utente: l'app impara come rinominare i simili.
+  bool titleEdited;
+
   String get fileName => fileRev == 0 ? '$id.pdf' : '$id.v$fileRev.pdf';
 
   bool get hasArchive => archiveRev > 0;
@@ -417,6 +425,8 @@ class Document with Syncable {
         if (shareLink != null) 'link': shareLink,
         if (storagePathId != null) 'path': storagePathId,
         if (fileRev > 0) 'rev': fileRev,
+        if (userEdited) 'ue': true,
+        if (titleEdited) 'te': true,
         if (history.isNotEmpty) 'hist': history.map((h) => h.toJson()).toList(),
         'mod': modified,
         if (deleted) 'del': true,
@@ -453,6 +463,8 @@ class Document with Syncable {
         shareLink: j['link'] as String?,
         storagePathId: j['path'] as String?,
         fileRev: (j['rev'] as num?)?.toInt() ?? 0,
+        userEdited: j['ue'] as bool? ?? false,
+        titleEdited: j['te'] as bool? ?? false,
         history: ((j['hist'] as List?) ?? const [])
             .map((h) => HistoryEntry.fromJson((h as Map).cast<String, dynamic>()))
             .toList(),

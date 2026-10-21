@@ -15,6 +15,9 @@ import 'workflows.dart';
 /// costruito dal modello (tipo specifico, dettagli, importo, ente).
 String? autoTitle(Archive a, Document d) {
   if (!a.config.autoTitle) return null;
+  // Prima di tutto: come hai rinominato tu documenti simili.
+  final learned = learnedTitle(a, d);
+  if (learned != null) return learned;
   if (a.config.keepFileName) {
     final name = meaningfulFileName(d.originalName);
     if (name != null) return name;
@@ -41,6 +44,91 @@ bool applyKindCategory(Archive a, Document d) {
   if (current == cat) return false;
   d.typeId = cat;
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Titoli imparati dalle correzioni
+
+String _two(int v) => v.toString().padLeft(2, '0');
+
+const List<String> _months = [
+  'gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+  'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre',
+];
+
+/// Trasforma il titolo scelto dall'utente in un modello: le parti che
+/// cambiano da un documento all'altro (date, mittente, tipo, importo,
+/// numero) diventano segnaposti, il resto resta uguale.
+/// Es. "Etichetta Vinted 11-10-2026" → "Etichetta Vinted {created_day}-{created_month}-{created_year}".
+String titleToTemplate(Archive a, Document d) {
+  var t = d.title;
+  String esc(String s) => RegExp.escape(s);
+  void sub(String pattern, String placeholder, {bool ci = false}) {
+    if (pattern.isEmpty) return;
+    t = t.replaceAll(RegExp('(?<![\\p{L}\\p{N}])$pattern(?![\\p{L}\\p{N}])', caseSensitive: !ci, unicode: true), placeholder);
+  }
+
+  final c = d.created;
+  final y = '${c.year}', yy = _two(c.year % 100), m = _two(c.month), dd = _two(c.day);
+  final mi = '${c.month}', di = '${c.day}';
+  // Date complete, dalle più lunghe.
+  for (final sep in ['-', '/', '.', '_', ' ']) {
+    final s = esc(sep);
+    sub('$y$s$m$s$dd', '{created_year}$sep{created_month}$sep{created_day}');
+    sub('($dd|$di)$s($m|$mi)$s$y', '{created_day}$sep{created_month}$sep{created_year}');
+    sub('($dd|$di)$s($m|$mi)$s$yy', '{created_day}$sep{created_month}$sep{created_year_short}');
+    sub('($m|$mi)$s$y', '{created_month}$sep{created_year}');
+    sub('$y$s$m', '{created_year}$sep{created_month}');
+  }
+  final month = _months[c.month - 1];
+  sub('${esc(month)} $y', '{created_month_name} {created_year}', ci: true);
+  sub('${esc(month.substring(0, 3))}\\.? $y', '{created_month_name_short} {created_year}', ci: true);
+  sub(esc(month), '{created_month_name}', ci: true);
+  sub(y, '{created_year}');
+
+  final corr = a.correspondent(d.correspondentId)?.name;
+  if (corr != null && corr.length >= 3) sub(esc(corr), '{correspondent}', ci: true);
+  final type = a.type(d.typeId)?.name;
+  if (type != null && type.length >= 3) sub(esc(type), '{document_type}', ci: true);
+
+  final f = extractFacts(d.content);
+  final amount = f.amount;
+  if (amount != null) {
+    final value = amount.replaceAll(' €', '');
+    sub('${esc(value)}(\\s?(€|eur|euro))?', '{importo}', ci: true);
+  }
+  final number = f.number;
+  if (number != null && number.length >= 2) sub(esc(number), '{numero}');
+  return t;
+}
+
+/// Il documento rinominato a mano più simile a [d] (somiglianza ≥ [min]).
+Document? similarRenamed(Archive a, Document d, {double min = 0.45}) {
+  final v = termVector(d.content);
+  if (v.isEmpty) return null;
+  Document? best;
+  var bestScore = min;
+  for (final o in a.activeDocuments) {
+    if (o.id == d.id || !o.titleEdited || o.content.isEmpty) continue;
+    var s = cosine(v, termVector(o.content));
+    // Stesso mittente o stessa categoria: indizio in più.
+    if (d.correspondentId != null && o.correspondentId == d.correspondentId) s += 0.1;
+    if (d.typeId != null && o.typeId == d.typeId) s += 0.05;
+    if (s > bestScore) {
+      bestScore = s;
+      best = o;
+    }
+  }
+  return best;
+}
+
+/// Titolo imparato: si rinomina [d] come l'utente ha rinominato il
+/// documento più simile. Null se non c'è un esempio abbastanza simile.
+String? learnedTitle(Archive a, Document d) {
+  final example = similarRenamed(a, d);
+  if (example == null) return null;
+  final t = renderTitle(titleToTemplate(a, example), a, d);
+  return t.isEmpty ? null : t;
 }
 
 // ---------------------------------------------------------------------------

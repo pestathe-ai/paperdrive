@@ -226,4 +226,61 @@ void main() {
     expect(autoTitle(a, d), 'Etichetta di spedizione - Vinted');
     expect(drivePath(a, d).$1, ['Garanzia e acquisti', '2026']);
   });
+
+  group('impara dalle correzioni', () {
+    String label(String date, String ref) => cleanContent(
+        'DEPOSITO GIRO\r\nMITTENTE:\r\nDESTINATARIO:\r\nGiulia Vinted user\r\nStazione di servizio ROSSI PETROLI\r\n'
+        'NUMERO RIFERIMENTO CLIENTE:\r\n$ref\r\nmario rossi\r\n20095 Cusano Milanino\r\n$date\r\nDATA STAMPA ETICHETTA\r\n');
+
+    test('rinomina come hai rinominato un documento simile', () {
+      final a = Archive.starter();
+      final first = Document(
+        title: 'Spedizione Vinted punto ritiro 11-10-2026',
+        content: label('2026.10.11', 'aaa111'),
+        created: DateTime(2026, 10, 11),
+      )..titleEdited = true;
+      a.documents[first.id] = first;
+      expect(titleToTemplate(a, first), 'Spedizione Vinted punto ritiro {created_day}-{created_month}-{created_year}');
+      final second = Document(title: 'x', originalName: 'bbb222_2.pdf', content: label('2026.10.15', 'bbb222'), created: DateTime(2026, 10, 15));
+      expect(autoTitle(a, second), 'Spedizione Vinted punto ritiro 15-10-2026');
+      // Un documento diverso non copia quel nome.
+      final other = Document(title: 'x', originalName: 'scan.pdf', content: 'Referto visita cardiologica ospedale', created: DateTime(2026, 1, 2));
+      expect(learnedTitle(a, other), isNull);
+    });
+
+    test('mittente, importo e mese diventano segnaposti', () {
+      final a = Archive();
+      final enel = NamedEntity(name: 'Enel');
+      a.correspondents[enel.id] = enel;
+      final d = Document(
+        title: 'Luce Enel marzo 2024 89,90 €',
+        content: 'Enel Energia bolletta luce kwh totale da pagare 89,90 €',
+        created: DateTime(2024, 3, 5),
+        correspondentId: enel.id,
+      );
+      expect(titleToTemplate(a, d), 'Luce {correspondent} {created_month_name} {created_year} {importo}');
+    });
+
+    test('le correzioni insegnano anche senza "esaminato" e con categorie a parole chiave', () {
+      final a = Archive.starter();
+      final inbox = a.inboxTags.first.id;
+      for (var i = 0; i < 3; i++) {
+        final d = Document(
+          id: 'l$i',
+          title: 'x',
+          content: label('2026.10.1$i', 'r$i'),
+          typeId: 'st-garanzia',
+          tagIds: {inbox},
+        )..userEdited = true;
+        a.documents[d.id] = d;
+      }
+      a.documents['o'] = Document(id: 'o', title: 'y', content: 'referto ospedale visita cardiologica esame', typeId: 'st-sanita')
+        ..userEdited = true;
+      final clf = DocumentClassifier.train(a)!;
+      final n = Document(title: 'z', content: label('2026.10.20', 'zzz'));
+      // Le parole chiave predefinite non bastano: decide ciò che ha imparato.
+      final r = computeMatches(a, n, classifier: clf);
+      expect(r.typeId, 'st-garanzia');
+    });
+  });
 }
