@@ -134,6 +134,14 @@ const List<DocKind> documentKinds = [
   DocKind('Biglietto treno', 'st-viaggi', ['biglietto ferroviario', 'frecciarossa', 'intercity', 'regionale veloce', 'carrozza']),
   DocKind('Prenotazione alloggio', 'st-viaggi', ['conferma di prenotazione', 'prenotazione alberghiera', 'check-in', 'check-out', 'numero di prenotazione']),
 
+  // --- Spedizioni e acquisti online
+  DocKind('Etichetta di spedizione', 'st-garanzia', ['data stampa etichetta', 'etichetta di spedizione', 'lettera di vettura', 'numero riferimento cliente', 'numero di tracciamento', 'codice di tracciamento', 'tracking number', 'mittente:', 'destinatario:', 'punto di ritiro', 'deposito giro', 'locker', 'collo n', 'peso kg', 'dimensioni']),
+  DocKind('Etichetta di reso', 'st-garanzia', ['etichetta di reso', 'modulo di reso', 'autorizzazione al reso', 'codice reso', 'rma']),
+  DocKind('Prova di consegna', 'st-garanzia', ['prova di consegna', 'avvenuta consegna', 'ricevuta di consegna', 'proof of delivery']),
+  DocKind('Biglietto evento', 'st-viaggi', ['biglietto d\'ingresso', 'ticketone', 'vivaticket', 'settore', 'posto', 'ingresso valido', 'evento']),
+  DocKind('Abbonamento', null, ['abbonamento annuale', 'abbonamento mensile', 'rinnovo abbonamento', 'tessera associativa', 'quota associativa', 'iscrizione palestra']),
+  DocKind('Buono o coupon', 'st-garanzia', ['buono regalo', 'gift card', 'codice sconto', 'coupon', 'voucher']),
+
   // --- Acquisti
   DocKind('Scontrino', 'st-scontrino', ['documento commerciale', 'scontrino', 'vendita o prestazione']),
   DocKind('Conferma d\'ordine', 'st-garanzia', ['conferma d\'ordine', 'riepilogo dell\'ordine', 'riepilogo ordine', 'il tuo ordine', 'numero ordine']),
@@ -281,6 +289,19 @@ const List<(String, List<String>)> knownIssuers = [
   ('Gruppo San Donato', ['gruppo san donato']),
   ('Lifebrain', ['lifebrain']),
   // Commercio, trasporti, servizi
+  ('Vinted', ['vinted']),
+  ('Subito', ['subito.it']),
+  ('InPost', ['inpost']),
+  ('SDA', ['sda express']),
+  ('Poste Delivery', ['poste delivery', 'crono']),
+  ('Mondial Relay', ['mondial relay']),
+  ('Packlink', ['packlink']),
+  ('FedEx', ['fedex']),
+  ('TNT', ['tnt express']),
+  ('Shein', ['shein']),
+  ('Temu', ['temu']),
+  ('AliExpress', ['aliexpress']),
+  ('Wallapop', ['wallapop']),
   ('Amazon', ['amazon']),
   ('eBay', ['ebay']),
   ('Zalando', ['zalando']),

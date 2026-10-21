@@ -198,4 +198,32 @@ void main() {
     expect(applyWorkflows(a, d, WorkflowTrigger.added, source: DocSource.share), ['Titolo']);
     expect(d.title, 'Bolletta 2025-01-02');
   });
+
+  test('etichetta di spedizione Vinted (formato del telefono)', () {
+    // Struttura reale di un'etichetta per punto di ritiro (dati di fantasia).
+    const label = 'DEPOSITO GIRO\r\nORI15\r\nVA\r\nMITTENTE:\r\nDESTINATARIO:\r\nGiulia Vinted user\r\nITGAL110054F\r\n'
+        'Via Roma 20\r\nDIMENSIONI A\r\nStazione di servizio ROSSI PETROLI\r\nMI2\r\n21013 Gallarate\r\n'
+        'NUMERO RIFERIMENTO CLIENTE:\r\n11b8ef45-aa2b-4022-baad￾e132147d8846\r\nPROVINCIA\r\nmario rossi\r\n'
+        '20095 Cusano Milanino\r\nVia Verdi 89\r\n2026.10.11\r\nDATA STAMPA ETICHETTA\r\n800144617621013014689095';
+    final f = extractFacts(label);
+    expect(f.kind, 'Etichetta di spedizione');
+    expect(f.issuer, 'Vinted');
+    expect(detectDate(label, now: DateTime(2026, 10, 21)), DateTime(2026, 10, 11));
+    final a = Archive.starter();
+    final d = Document(
+      title: 'x',
+      originalName: '11b8ef45-aa2b-4022-baad-e132147d8846_2.pdf',
+      content: cleanContent(label),
+      created: DateTime(2026, 10, 11),
+    );
+    expect(meaningfulFileName(d.originalName), isNull);
+    applyMatches(a, d);
+    applyKindCategory(a, d);
+    expect(a.type(d.typeId)?.name, 'Garanzia e acquisti');
+    final c = NamedEntity(name: f.issuer!);
+    a.correspondents[c.id] = c;
+    d.correspondentId = c.id;
+    expect(autoTitle(a, d), 'Etichetta di spedizione - Vinted');
+    expect(drivePath(a, d).$1, ['Garanzia e acquisti', '2026']);
+  });
 }
