@@ -7,6 +7,15 @@ sincronizza su **Google Drive**. L'APK viene compilato da GitHub Actions.
 
 ## Funzioni
 
+### Fedele a Paperless-ngx (v0.6)
+
+La logica di classificazione è portata dal codice di Paperless-ngx:
+- **Regole** come `matching.py`: Una qualsiasi parola, Tutte le parole, Testo esatto, Regex, Approssimata (somiglianza ≥ 90, senza punteggiatura), Automatica.
+- **Classificatore automatico** come `classifier.py`: impara dai documenti già esaminati (senza tag *Da esaminare*), solo per le etichette con algoritmo *Automatica*; parole e coppie di parole → rete neurale con 100 neuroni nascosti; soglia 0.3 per corrispondente/tipo/percorso, 0.5 per i tag. Si riaddestra da solo dopo le modifiche.
+- **Suggerimenti** nel dettaglio del documento, come nell'interfaccia di Paperless.
+- **Segnaposti** anche con la sintassi di Paperless (`{{ correspondent }}`, `{{ created_year }}`, `{{ created_month_name }}`…).
+- I nuovi tag, corrispondenti e tipi usano *Automatica*, come nell'interfaccia di Paperless.
+
 ### Archiviazione automatica (v0.3)
 
 Ogni documento che **scansioni**, **importi**, ricevi per **email** o **condividi verso Paperdrive** da un'altra app (menu *Condividi* o *Apri con*, anche più file insieme) viene, senza altri passaggi:
