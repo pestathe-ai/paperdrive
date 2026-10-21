@@ -102,4 +102,3 @@ jobs:
             Serve Android 11 o successivo (per l'AI sul telefono).
           files: |
             build/app/outputs/flutter-apk/*-release.apk
-            build/app/outputs/mapping/release/mapping.txt
