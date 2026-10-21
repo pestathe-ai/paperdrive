@@ -126,6 +126,18 @@ class _DocumentScreenState extends State<DocumentScreen> {
         final n = app.reapplyRules([d], overwrite: true, retitle: true);
         titleCtrl.text = d.title;
         if (mounted) showMessage(context, n > 0 ? 'Classificato e rinominato' : 'Nessun cambiamento');
+      case 'ai':
+        final fields = await app.aiReread(d);
+        titleCtrl.text = d.title;
+        if (!mounted) return;
+        showMessage(
+          context,
+          fields == null
+              ? 'L\'AI non ha risposto${app.ai.error == null ? '' : ': ${app.ai.error}'}'
+              : fields.isEmpty
+                  ? 'L\'AI conferma la classificazione attuale'
+                  : 'Aggiornati dall\'AI: ${fields.toSet().join(', ')}',
+        );
       case 'asn':
         d.asn = app.archive.nextAsn();
         app.saveDocument(d);
@@ -187,6 +199,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
                   if (d.asn == null)
                     const PopupMenuItem(value: 'asn', child: Text('Assegna ASN')),
                   const PopupMenuItem(value: 'retitle', child: Text('Riclassifica e rinomina')),
+                  if (app.settings.aiModel != null && !app.readOnly)
+                    const PopupMenuItem(value: 'ai', child: Text('Rileggi con l\'AI')),
                   const PopupMenuItem(value: 'pages', child: Text('Modifica pagine')),
                   const PopupMenuItem(value: 'split', child: Text('Dividi in più documenti')),
                   const PopupMenuItem(value: 'trash', child: Text('Sposta nel cestino')),

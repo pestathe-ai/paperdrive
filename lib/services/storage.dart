@@ -17,6 +17,10 @@ class Settings {
   bool makeArchive = true;
   String? driveAccount;
 
+  /// AI sul telefono: modello scaricato (id) e se usarlo all'importazione.
+  String? aiModel;
+  bool aiEnabled = false;
+
   /// Cartella Drive dell'archivio (la mia o una condivisa con me).
   String? driveFolderId;
   String? driveFolderOwner;
@@ -41,6 +45,8 @@ class Settings {
         'canEdit': driveCanEdit,
         'lastSync': lastSync,
         'lastErr': lastSyncError,
+        'aiModel': aiModel,
+        'ai': aiEnabled,
       };
 
   static Settings fromJson(Map<String, dynamic> j) => Settings()
@@ -56,7 +62,9 @@ class Settings {
     ..driveShared = j['shared'] as bool? ?? false
     ..driveCanEdit = j['canEdit'] as bool? ?? true
     ..lastSync = (j['lastSync'] as num?)?.toInt()
-    ..lastSyncError = j['lastErr'] as String?;
+    ..lastSyncError = j['lastErr'] as String?
+    ..aiModel = j['aiModel'] as String?
+    ..aiEnabled = j['ai'] as bool? ?? false;
 }
 
 /// File sul telefono: indice, impostazioni, PDF e anteprime.

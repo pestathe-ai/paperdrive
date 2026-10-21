@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
 import 'package:material_ui/material_ui.dart';
 
+import '../core/ai.dart';
 import '../core/archive.dart';
 import '../core/classifier.dart';
 import '../core/dates.dart';
@@ -18,6 +19,7 @@ import '../core/search.dart';
 import '../core/sync_merge.dart';
 import '../core/text_utils.dart';
 import '../core/workflows.dart';
+import '../services/ai_assistant.dart';
 import '../services/drive_sync.dart';
 import '../services/ingest.dart';
 import '../services/mail_import.dart';
@@ -50,6 +52,12 @@ class AppState extends ChangeNotifier {
   Timer? _trainTimer;
   String? _trainedSignature;
   final SearchIndex searchIndex = SearchIndex();
+
+  /// Modello linguistico sul telefono (facoltativo).
+  final AiAssistant ai = AiAssistant();
+
+  /// Il modello da usare all'importazione, se attivato e scaricato.
+  AiModelOption? get aiModel => settings.aiEnabled ? aiModelById(settings.aiModel) : null;
 
   bool ready = false;
 
@@ -248,6 +256,7 @@ class AppState extends ChangeNotifier {
       busy = null;
       notifyListeners();
       unawaited(storage.clearTmp());
+      unawaited(ai.release());
     }
     return messages;
   }
@@ -275,7 +284,14 @@ class AppState extends ChangeNotifier {
       if (checkDuplicates && dup != null && settings.skipDuplicates) {
         return IngestResult('${input.originalName}: già presente come "${dup.title}"');
       }
-      _prepare(doc, mailItem: mailItem, asn: asn);
+      AiResult? aiResult;
+      final model = aiModel;
+      if (model != null && doc.content.trim().length >= 20) {
+        busy = '$prefix${input.originalName}: l\'AI sta leggendo il documento…';
+        notifyListeners();
+        aiResult = await ai.analyze(model, buildAiPrompt(archive, doc));
+      }
+      _prepare(doc, mailItem: mailItem, asn: asn, ai: aiResult);
       if (analysis.ocrPages.isNotEmpty && settings.makeArchive) {
         busy = '${prefix}Creazione della versione PDF/A…';
         notifyListeners();
@@ -312,7 +328,7 @@ class AppState extends ChangeNotifier {
     return c;
   }
 
-  void _prepare(Document doc, {MailItem? mailItem, int? asn}) {
+  void _prepare(Document doc, {MailItem? mailItem, int? asn, AiResult? ai}) {
     if (doc.source == DocSource.scan) {
       doc.title = suggestTitle(doc.content) ?? doc.originalName;
     }
@@ -349,15 +365,17 @@ class AppState extends ChangeNotifier {
     applyMatches(archive, doc, classifier: classifier);
     applyKindCategory(archive, doc);
     _guessCorrespondent(doc);
+    if (ai != null) applyAiResult(archive, doc, ai, retitle: false);
     final title = autoTitle(archive, doc);
     if (title != null) doc.title = title;
+    if (ai?.title != null && aiMayRetitle(archive, doc)) doc.title = ai!.title!;
     if (asn != null) {
       doc.asn = asn;
     } else if (settings.autoAsn) {
       doc.asn = archive.nextAsn();
     }
     final flows = applyWorkflows(archive, doc, WorkflowTrigger.added, source: doc.source);
-    doc.log('Aggiunto (${doc.source.label})'
+    doc.log('Aggiunto (${doc.source.label})${ai != null ? ', letto dall\'AI' : ''}'
         '${flows.isEmpty ? '' : ', flussi: ${flows.join(', ')}'}');
     doc.touch();
   }
@@ -572,6 +590,35 @@ class AppState extends ChangeNotifier {
     }
     if (n > 0) changed();
     return n;
+  }
+
+  /// Fa rileggere il documento all'AI e applica categoria, mittente, data e
+  /// titolo. Restituisce i campi cambiati, o null se l'AI non ha risposto.
+  Future<List<String>?> aiReread(Document d) async {
+    final model = aiModelById(settings.aiModel);
+    if (model == null || d.content.trim().isEmpty) return null;
+    busy = 'L\'AI sta leggendo il documento…';
+    notifyListeners();
+    try {
+      final r = await ai.analyze(model, buildAiPrompt(archive, d));
+      if (r == null) return null;
+      final before = d.toJson();
+      final fields = applyAiResult(archive, d, r, retitle: false);
+      // Chiesto esplicitamente: il titolo dell'AI, se non l'hai scritto tu.
+      if (r.title != null && !d.titleEdited && r.title != d.title) {
+        d.title = r.title!;
+        fields.add('titolo');
+      }
+      if (logChanges(archive, before, d, via: 'AI')) {
+        d.touch();
+        changed(entities: true);
+      }
+      return fields;
+    } finally {
+      busy = null;
+      notifyListeners();
+      unawaited(ai.release());
+    }
   }
 
   /// Aggiunge le categorie predefinite che mancano.

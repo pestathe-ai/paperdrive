@@ -51,7 +51,7 @@ grep -c 'intent.action.SEND' "$MANIFEST" || { cat "$MANIFEST"; exit 1; }
 
 for G in android/app/build.gradle.kts android/app/build.gradle; do
   if [ -f "$G" ]; then
-    sed -i -E 's/minSdk( =|) flutter\.minSdkVersion/minSdk\1 24/' "$G"
+    sed -i -E 's/minSdk( =|) flutter\.minSdkVersion/minSdk\1 30/' "$G"
   fi
 done
 

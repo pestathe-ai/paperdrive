@@ -7,6 +7,23 @@ sincronizza su **Google Drive**. L'APK viene compilato da GitHub Actions.
 
 ## Funzioni
 
+### AI sul telefono (v0.8)
+
+Da *Impostazioni → AI sul telefono* si scarica una volta un modello linguistico gratuito
+(**Gemma 4 E2B** di Google, 2,6 GB, oppure Qwen 2.5 1.5B, 1,6 GB) che gira sulla GPU del telefono
+con LiteRT-LM. Ogni documento aggiunto viene letto dal modello, che ne capisce tipo, categoria,
+mittente, data e gli dà un nome specifico (es. `Etichetta spedizione Vinted InPost`). Nessun
+documento esce dal telefono e funziona senza internet.
+
+Precedenza: regole scritte dall'utente e documenti simili corretti a mano > AI > regole
+predefinite. La data dell'AI viene usata solo se compare davvero nel testo. Dal menu di un
+documento: *Rileggi con l'AI*. Richiede Android 11+ e un telefono arm64.
+
+### Impara dalle correzioni (v0.7)
+
+Quando correggi categoria, mittente o titolo di un documento, l'app impara: i documenti simili
+successivi vengono classificati e rinominati allo stesso modo.
+
 ### Fedele a Paperless-ngx (v0.6)
 
 La logica di classificazione è portata dal codice di Paperless-ngx:
@@ -64,7 +81,7 @@ L'app usa la cartella `Paperdrive` (e quelle che altre persone condividono con t
 
 ## Limiti noti
 
-- Solo Android. OCR per alfabeto latino.
+- Solo Android 11+ (arm64). OCR per alfabeto latino.
 - La posta viene controllata all'apertura dell'app e con "Controlla ora", non in background ad app chiusa.
 - Gmail richiede una *password per le app*; gli account Outlook/Hotmail personali non accettano più la password via IMAP.
 - La password email è salvata nello spazio privato dell'app sul telefono (non cifrata a parte).

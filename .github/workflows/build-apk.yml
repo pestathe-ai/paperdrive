@@ -74,7 +74,7 @@ jobs:
       - name: Compila APK
         run: |
           set -o pipefail
-          if ! flutter build apk --release --split-per-abi 2>&1 | tee x.log; then
+          if ! flutter build apk --release --split-per-abi --target-platform android-arm64 2>&1 | tee x.log; then
             grep -n -i -E 'error|what went wrong|failed|exception|\.dart:[0-9]+' x.log | tail -50 \
               | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > err.txt
             echo "::error title=build::$(cat err.txt)"
@@ -99,7 +99,7 @@ jobs:
           name: Paperdrive build ${{ github.run_number }}
           body: |
             Scarica **app-arm64-v8a-release.apk** (va bene per quasi tutti i telefoni recenti).
-            Telefoni vecchi: app-armeabi-v7a-release.apk.
+            Serve Android 11 o successivo (per l'AI sul telefono).
           files: |
             build/app/outputs/flutter-apk/*-release.apk
             build/app/outputs/mapping/release/mapping.txt
