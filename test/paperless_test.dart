@@ -172,13 +172,13 @@ void main() {
       expect(DocumentClassifier.train(a), isNull);
     });
 
-    test('solo le etichette "Automatica" vengono imparate', () {
+    test('impara anche le voci con regole a parole chiave (assegnate a mano)', () {
       final a = build();
       for (final c in a.correspondents.values) {
         c.algorithm = MatchAlgorithm.any;
       }
-      a.tags['casa']!.algorithm = MatchAlgorithm.none;
-      expect(DocumentClassifier.train(a), isNull);
+      final clf = DocumentClassifier.train(a)!;
+      expect(clf.predictCorrespondent('teleriscaldamento milano calore febbraio'), 'a2a');
     });
   });
 
