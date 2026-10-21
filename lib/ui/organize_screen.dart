@@ -126,6 +126,28 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
               ),
             ),
             const Divider(height: 32),
+            Text('Apprendimento automatico', style: theme.textTheme.titleMedium),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: app.training
+                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.psychology_outlined),
+              title: Text(app.training
+                  ? 'Addestramento in corso…'
+                  : app.classifier == null
+                      ? 'Non ancora addestrato'
+                      : 'Addestrato su ${app.classifier!.trainedOn} documenti'),
+              subtitle: const Text(
+                'Come in Paperless: impara dai documenti già esaminati (senza il tag "Da esaminare") '
+                'e assegna tag, corrispondenti, tipi e percorsi con algoritmo "Automatica".',
+              ),
+              trailing: IconButton(
+                tooltip: 'Riaddestra ora',
+                icon: const Icon(Icons.refresh),
+                onPressed: app.training ? null : () => app.retrain(force: true),
+              ),
+            ),
+            const Divider(height: 32),
             Text('Nome', style: theme.textTheme.titleMedium),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,

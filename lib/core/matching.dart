@@ -1,28 +1,31 @@
-/// Assegnazione automatica di tag, corrispondenti e tipi, con gli stessi
-/// algoritmi di Paperless-ngx (una parola, tutte, testo esatto, regex,
-/// approssimata, automatica).
+/// Assegnazione automatica di tag, corrispondenti, tipi e percorsi, come
+/// `documents/matching.py` di Paperless-ngx: algoritmi Nessuna, Una qualsiasi
+/// parola, Tutte le parole, Testo esatto, Regex, Approssimata (partial ratio
+/// ≥ 90) e Automatica (classificatore addestrato sui tuoi documenti).
 library;
 
 import 'dart:math';
 
 import 'archive.dart';
+import 'classifier.dart';
 import 'models.dart';
 import 'text_utils.dart';
 
-/// Soglia per la corrispondenza approssimata (0..1).
-const double fuzzyThreshold = 0.85;
+/// Soglia della corrispondenza approssimata (rapidfuzz partial_ratio ≥ 90).
+const double fuzzyThreshold = 0.90;
 
-/// Soglia di somiglianza per l'algoritmo automatico.
-const double autoThreshold = 0.30;
+/// Testo su cui si cercano le regole: come Paperless, il contenuto.
+String matchText(Document d) => d.content;
 
-/// Testo su cui si cercano le regole: titolo, nome del file e contenuto.
-String matchText(Document d) => '${d.title}\n${d.originalName}\n${d.content}';
+String _flat(String s) => s.replaceAll(RegExp(r'\s+'), ' ');
 
+/// `re.search(rf"\b{word}\b", content)`; le frasi tra virgolette accettano
+/// qualsiasi spazio tra le parole (`\s+`).
 bool _containsWord(String haystack, String needle, bool ci) {
-  final h = ci ? normalize(haystack) : haystack;
-  final n = ci ? normalize(needle) : needle;
+  final h = _flat(ci ? normalize(haystack) : haystack);
+  final n = _flat((ci ? normalize(needle) : needle).trim());
   if (n.isEmpty) return false;
-  final re = RegExp('(^|[^A-Za-z0-9])${RegExp.escape(n)}(\$|[^A-Za-z0-9])');
+  final re = RegExp('(^|[^\\p{L}\\p{N}_])${RegExp.escape(n)}(\$|[^\\p{L}\\p{N}_])', unicode: true);
   return re.hasMatch(h);
 }
 
@@ -71,8 +74,11 @@ bool matchesRule(Matchable m, String text) {
         return false;
       }
     case MatchAlgorithm.fuzzy:
-      if (pattern.isEmpty) return false;
-      return partialSimilarity(pattern, text) >= fuzzyThreshold;
+      // Come Paperless: via la punteggiatura, poi somiglianza parziale.
+      final p = pattern.replaceAll(RegExp(r'[^\p{L}\p{N}_\s]', unicode: true), '');
+      if (p.trim().isEmpty) return false;
+      final t = text.replaceAll(RegExp(r'[^\p{L}\p{N}_\s]', unicode: true), '');
+      return partialSimilarity(p, t) >= fuzzyThreshold;
   }
 }
 
@@ -112,21 +118,6 @@ double cosine(Map<String, double> a, Map<String, double> b) {
   return n == 0 ? 0 : dot / n;
 }
 
-/// Media normalizzata dei vettori dei documenti di esempio.
-Map<String, double> centroid(Iterable<Map<String, double>> vectors) {
-  final out = <String, double>{};
-  var count = 0;
-  for (final v in vectors) {
-    final n = _norm(v);
-    if (n == 0) continue;
-    count++;
-    v.forEach((k, x) => out[k] = (out[k] ?? 0) + x / n);
-  }
-  if (count == 0) return out;
-  out.updateAll((k, x) => x / count);
-  return out;
-}
-
 /// Risultato delle regole: cosa assegnare al documento.
 class MatchResult {
   MatchResult({
@@ -141,61 +132,31 @@ class MatchResult {
   final String? storagePathId;
 }
 
-/// Calcola tag, corrispondente e tipo suggeriti per [doc].
-///
-/// I documenti dell'archivio (escluso [doc]) servono da esempi per
-/// l'algoritmo automatico.
-MatchResult computeMatches(Archive archive, Document doc) {
+/// Calcola tag, corrispondente, tipo e percorso per [doc], come
+/// `match_tags` / `match_correspondents` / ... di Paperless: un elemento
+/// corrisponde se la sua regola corrisponde, oppure se è "Automatica" e il
+/// classificatore lo prevede. Tra più candidati vince la previsione del
+/// classificatore, poi la regola più pertinente, poi il nome.
+MatchResult computeMatches(Archive archive, Document doc, {DocumentClassifier? classifier}) {
   final text = matchText(doc);
-  final examples = archive.activeDocuments.where((d) => d.id != doc.id).toList();
-  Map<String, double>? docVec;
-  Map<String, Map<String, double>>? exampleVecs;
-
-  Map<String, double> vecOf(Document d) {
-    exampleVecs ??= {};
-    return exampleVecs!.putIfAbsent(d.id, () => termVector(matchText(d)));
-  }
-
-  double autoScore(bool Function(Document) hasLabel) {
-    final positives = examples.where(hasLabel).toList();
-    if (positives.length < 2) return 0;
-    docVec ??= termVector(text);
-    return cosine(docVec!, centroid(positives.map(vecOf)));
-  }
-
+  final predTags = classifier?.predictTags(text) ?? const <String>[];
   final tags = <String>{};
   for (final t in archive.activeTags) {
-    if (t.algorithm == MatchAlgorithm.auto) {
-      if (autoScore((d) => d.tagIds.contains(t.id)) >= autoThreshold) {
-        tags.add(t.id);
-      }
-    } else if (matchesRule(t, text)) {
+    if (matchesRule(t, text) ||
+        (t.algorithm == MatchAlgorithm.auto && predTags.contains(t.id))) {
       tags.add(t.id);
     }
   }
 
-  String? pickOne(
-    List<Matchable> entities,
-    String? Function(Document) labelOf,
-  ) {
-    // Prima le regole esplicite (vince la più pertinente), poi l'automatica.
-    String? bestRule;
-    var bestRuleScore = 0;
-    for (final e in entities) {
-      if (e.algorithm == MatchAlgorithm.auto) continue;
-      final sc = ruleScore(e, text);
-      if (sc > bestRuleScore) {
-        bestRuleScore = sc;
-        bestRule = e.id;
-      }
-    }
-    if (bestRule != null) return bestRule;
+  String? pickOne(List<Matchable> entities, String? predicted) {
     String? best;
-    var bestScore = autoThreshold;
-    for (final e in entities.where((e) => e.algorithm == MatchAlgorithm.auto)) {
-      final s = autoScore((d) => labelOf(d) == e.id);
-      if (s >= bestScore) {
-        bestScore = s;
+    var bestScore = 0;
+    for (final e in entities) {
+      final score = e.algorithm == MatchAlgorithm.auto
+          ? (e.id == predicted ? 1000 : 0)
+          : ruleScore(e, text);
+      if (score > bestScore) {
+        bestScore = score;
         best = e.id;
       }
     }
@@ -205,17 +166,22 @@ MatchResult computeMatches(Archive archive, Document doc) {
   return MatchResult(
     tagIds: tags,
     correspondentId:
-        pickOne(archive.activeCorrespondents, (d) => d.correspondentId),
-    typeId: pickOne(archive.activeTypes, (d) => d.typeId),
-    storagePathId: pickOne(archive.activeStoragePaths, (d) => d.storagePathId),
+        pickOne(archive.activeCorrespondents, classifier?.predictCorrespondent(text)),
+    typeId: pickOne(archive.activeTypes, classifier?.predictDocumentType(text)),
+    storagePathId: pickOne(archive.activeStoragePaths, classifier?.predictStoragePath(text)),
   );
 }
 
 /// Applica le regole a un documento. Con [overwrite] falso non sostituisce
 /// corrispondente e tipo già scelti; i tag vengono sempre aggiunti.
 /// Restituisce vero se qualcosa è cambiato.
-bool applyMatches(Archive archive, Document doc, {bool overwrite = false}) {
-  final r = computeMatches(archive, doc);
+bool applyMatches(
+  Archive archive,
+  Document doc, {
+  bool overwrite = false,
+  DocumentClassifier? classifier,
+}) {
+  final r = computeMatches(archive, doc, classifier: classifier);
   var changed = false;
   for (final t in r.tagIds) {
     if (doc.tagIds.add(t)) changed = true;

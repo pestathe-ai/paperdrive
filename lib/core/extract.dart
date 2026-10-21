@@ -333,7 +333,8 @@ int _firstIndex(String normText, String phrase) {
 /// Il tipo di documento più probabile. Ogni frase trovata vale un punto;
 /// le frasi nell'intestazione (prime 25 righe) valgono di più; i tipi
 /// generici valgono la metà.
-DocKind? detectKindEntry(String text) {
+DocKind? detectKindEntry(String raw) {
+  final text = cleanContent(raw);
   final t = normalize(text.length > 8000 ? text.substring(0, 8000) : text);
   var headEnd = t.length;
   var lines = 0;
@@ -371,8 +372,10 @@ String? detectKind(String text) => detectKindEntry(text)?.name;
 /// L'ente o l'azienda che compare per primo nel testo (di solito
 /// l'intestazione); se non è tra quelli noti, cerca professionisti
 /// (notaio, avvocato, studio…) e società (S.p.A., S.r.l.…) nell'intestazione.
-String? detectIssuer(String text) =>
-    _knownIssuer(text) ?? _publicBody(text) ?? _professional(text) ?? _company(text);
+String? detectIssuer(String raw) {
+  final text = cleanContent(raw);
+  return _knownIssuer(text) ?? _publicBody(text) ?? _professional(text) ?? _company(text);
+}
 
 /// Enti con un nome proprio: Comune di X, ASL/ATS/ASST X, scuole, ospedali…
 /// Solo se compaiono nell'intestazione (prime righe).
@@ -396,7 +399,8 @@ String? _publicBody(String text) {
 
 /// Prima riga che sembra un titolo (es. "Comunicazione variazione tariffe"),
 /// per i documenti di tipo sconosciuto.
-String? detectHeading(String text) {
+String? detectHeading(String raw) {
+  final text = cleanContent(raw);
   const keywords = [
     'oggetto', 'comunicazione', 'avviso', 'richiesta', 'conferma', 'attestazione', 'attestato',
     'certificato', 'certificazione', 'dichiarazione', 'modulo', 'domanda', 'informativa', 'notifica',
@@ -708,7 +712,8 @@ class DocFacts {
           }.contains(kind));
 }
 
-DocFacts extractFacts(String text) {
+DocFacts extractFacts(String raw) {
+  final text = cleanContent(raw);
   final entry = detectKindEntry(text);
   final kind = entry?.name;
   final weak = entry?.weak ?? false;

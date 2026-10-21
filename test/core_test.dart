@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:paperdrive/core/archive.dart';
+import 'package:paperdrive/core/classifier.dart';
 import 'package:paperdrive/core/dates.dart';
 import 'package:paperdrive/core/extract.dart';
 import 'package:paperdrive/core/mail_rules.dart';
@@ -102,10 +103,13 @@ void main() {
       }
       final other = doc('o', 'Contratto affitto appartamento canone mensile');
       a.documents[other.id] = other;
+      // Senza classificatore "Automatica" non assegna nulla (come Paperless).
       final nuovo = doc('n', 'Referto visita ospedale esame');
-      expect(computeMatches(a, nuovo).tagIds, contains(medico.id));
+      expect(computeMatches(a, nuovo).tagIds, isEmpty);
+      final clf = DocumentClassifier.train(a)!;
+      expect(computeMatches(a, nuovo, classifier: clf).tagIds, contains(medico.id));
       final affitto = doc('n2', 'Canone affitto appartamento');
-      expect(computeMatches(a, affitto).tagIds, isNot(contains(medico.id)));
+      expect(computeMatches(a, affitto, classifier: clf).tagIds, isNot(contains(medico.id)));
     });
   });
 

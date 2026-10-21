@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
 import 'package:material_ui/material_ui.dart';
 
 import '../core/archive.dart';
+import '../core/classifier.dart';
 import '../core/dates.dart';
 import '../core/extract.dart' show detectIssuer;
 import '../core/mail_rules.dart';
@@ -40,6 +42,13 @@ class AppState extends ChangeNotifier {
   late final Ingestor ingestor;
   late final DriveSync drive;
   late final MailImporter mailImporter;
+
+  /// Classificatore automatico (come Paperless), addestrato sui documenti
+  /// già esaminati. Null finché non ci sono dati.
+  DocumentClassifier? classifier;
+  bool training = false;
+  Timer? _trainTimer;
+  String? _trainedSignature;
   final SearchIndex searchIndex = SearchIndex();
 
   bool ready = false;
@@ -78,7 +87,58 @@ class AppState extends ChangeNotifier {
     unawaited(_startup());
   }
 
+  /// Firma di ciò che il classificatore impara: se non cambia, non si
+  /// riaddestra (come il controllo "last_doc_change" di Paperless).
+  String _trainingSignature() {
+    final inbox = archive.inboxTags.map((t) => t.id).toSet();
+    final b = StringBuffer();
+    for (final d in archive.activeDocuments) {
+      if (d.tagIds.any(inbox.contains)) continue;
+      b
+        ..write(d.id)
+        ..write(d.correspondentId)
+        ..write(d.typeId)
+        ..write(d.storagePathId)
+        ..write((d.tagIds.toList()..sort()).join(','))
+        ..write(d.content.length);
+    }
+    for (final m in <Matchable>[
+      ...archive.activeTags,
+      ...archive.activeCorrespondents,
+      ...archive.activeTypes,
+      ...archive.activeStoragePaths,
+    ]) {
+      if (m.algorithm == MatchAlgorithm.auto) b.write(m.id);
+    }
+    return b.toString().hashCode.toString();
+  }
+
+  /// Riaddestra il classificatore in un processo separato.
+  Future<void> retrain({bool force = false}) async {
+    if (training) return;
+    final sig = _trainingSignature();
+    if (!force && sig == _trainedSignature) return;
+    training = true;
+    notifyListeners();
+    try {
+      final json = archive.toJson();
+      classifier = await Isolate.run(() => DocumentClassifier.train(Archive.fromJson(json)));
+      _trainedSignature = sig;
+    } catch (_) {
+      // Senza classificatore valgono comunque le regole.
+    } finally {
+      training = false;
+      notifyListeners();
+    }
+  }
+
+  void _scheduleTraining() {
+    _trainTimer?.cancel();
+    _trainTimer = Timer(const Duration(seconds: 20), () => retrain());
+  }
+
   Future<void> _startup() async {
+    unawaited(retrain());
     if (settings.driveEnabled && settings.autoSync) {
       await syncNow(silent: true);
     }
@@ -97,6 +157,7 @@ class AppState extends ChangeNotifier {
   /// Da chiamare dopo ogni modifica: salva e (se attivo) sincronizza.
   void changed({bool entities = false, bool sync = true}) {
     if (entities) searchIndex.clear();
+    _scheduleTraining();
     notifyListeners();
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 400), () {
@@ -242,7 +303,7 @@ class AppState extends ChangeNotifier {
     for (final c in archive.activeCorrespondents) {
       if (normalize(c.name) == n) return c;
     }
-    final c = NamedEntity(name: name.trim());
+    final c = NamedEntity(name: name.trim(), algorithm: MatchAlgorithm.auto);
     archive.correspondents[c.id] = c;
     return c;
   }
@@ -281,7 +342,7 @@ class AppState extends ChangeNotifier {
             '${mailItem.info.fromName.isEmpty ? mailItem.info.from : mailItem.info.fromName}',
       ));
     }
-    applyMatches(archive, doc);
+    applyMatches(archive, doc, classifier: classifier);
     applyKindCategory(archive, doc);
     _guessCorrespondent(doc);
     final title = autoTitle(archive, doc);
@@ -492,7 +553,7 @@ class AppState extends ChangeNotifier {
     var n = 0;
     for (final d in docs) {
       final before = d.toJson();
-      applyMatches(archive, d, overwrite: overwrite);
+      applyMatches(archive, d, overwrite: overwrite, classifier: classifier);
       applyKindCategory(archive, d);
       if (retitle) _guessCorrespondent(d);
       if (retitle) {

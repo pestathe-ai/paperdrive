@@ -7,6 +7,7 @@ import 'package:pdfrx/pdfrx.dart' show PdfViewer;
 import 'package:share_plus/share_plus.dart';
 
 import '../core/dates.dart' show findDates;
+import '../core/matching.dart' show computeMatches;
 import '../core/models.dart';
 import '../state/app_state.dart';
 import '../core/organize.dart' show drivePath, similarDocuments;
@@ -234,9 +235,68 @@ class _DocumentScreenState extends State<DocumentScreen> {
     final a = app.archive;
     final tags = d.tagIds.map(a.tag).whereType<Tag>().toList();
     final dates = findDates(d.content).take(6).toList();
+    // Suggerimenti come in Paperless: cosa assegnerebbero regole e
+    // classificatore, se diverso da quello attuale.
+    final sug = computeMatches(a, d, classifier: app.classifier);
+    final sugCorr = sug.correspondentId != d.correspondentId ? a.correspondent(sug.correspondentId) : null;
+    final sugType = sug.typeId != d.typeId ? a.type(sug.typeId) : null;
+    final sugTags = sug.tagIds.where((t) => !d.tagIds.contains(t)).map(a.tag).whereType<Tag>().toList();
+    final hasSug = sugCorr != null || sugType != null || sugTags.isNotEmpty;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (hasSug && !app.readOnly)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.auto_awesome, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text('Suggerimenti', style: Theme.of(context).textTheme.titleSmall)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (sugType != null)
+                        ActionChip(
+                          avatar: const Icon(Icons.category_outlined, size: 16),
+                          label: Text(sugType.name),
+                          onPressed: () {
+                            d.typeId = sugType.id;
+                            app.saveDocument(d);
+                          },
+                        ),
+                      if (sugCorr != null)
+                        ActionChip(
+                          avatar: const Icon(Icons.person_outline, size: 16),
+                          label: Text(sugCorr.name),
+                          onPressed: () {
+                            d.correspondentId = sugCorr.id;
+                            app.saveDocument(d);
+                          },
+                        ),
+                      for (final t in sugTags)
+                        ActionChip(
+                          avatar: const Icon(Icons.label_outline, size: 16),
+                          label: Text(t.name),
+                          onPressed: () {
+                            d.tagIds.add(t.id);
+                            app.saveDocument(d);
+                          },
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
         TextField(
           controller: titleCtrl,
           decoration: const InputDecoration(labelText: 'Titolo', border: OutlineInputBorder()),

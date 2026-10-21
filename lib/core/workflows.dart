@@ -230,6 +230,11 @@ bool workflowMatches(
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
+const List<String> _monthNames = [
+  'gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+  'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre',
+];
+
 /// Segnaposti disponibili nei titoli (con descrizione).
 const Map<String, String> titlePlaceholders = {
   '{title}': 'titolo attuale',
@@ -268,6 +273,16 @@ Map<String, String> placeholderValues(Archive a, Document d, {bool facts = false
     '{original_filename}': name,
     '{asn}': d.asn?.toString() ?? '',
     '{owner}': d.owner ?? '',
+    // Nomi di Paperless-ngx.
+    '{created_year_short}': '${d.created.year % 100}'.padLeft(2, '0'),
+    '{created_month_name}': _monthNames[d.created.month - 1],
+    '{created_month_name_short}': _monthNames[d.created.month - 1].substring(0, 3),
+    '{added_year}': '${added.year}',
+    '{added_month}': _two(added.month),
+    '{added_day}': _two(added.day),
+    '{filename}': name,
+    '{owner_username}': d.owner ?? '',
+    '{doc_title}': d.title,
     if (f != null) '{kind}': f.label ?? a.type(d.typeId)?.name ?? '',
     if (f != null) '{details}': f.details,
     if (f != null) '{amount}': f.amountUseful ? f.amount! : '',
@@ -283,6 +298,11 @@ String fillPlaceholders(
   String Function(String key)? empty,
   String Function(String value)? clean,
 }) {
+  // Accetta anche la sintassi di Paperless-ngx: {{ correspondent }}.
+  template = template.replaceAllMapped(
+    RegExp(r'\{\{\s*([a-z_]+(?::[^}]+)?)\s*\}\}'),
+    (m) => '{${m.group(1)}}',
+  );
   final values = placeholderValues(
     a,
     d,

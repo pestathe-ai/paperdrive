@@ -16,6 +16,7 @@ import 'package:pdfrx/pdfrx.dart'
     show PdfDocument, PdfImageExt, PdfPage, PdfPageRotation, PdfPageWithRotationExtension;
 
 import '../core/models.dart';
+import '../core/text_utils.dart' show cleanContent;
 import '../core/organize.dart' show planBarcodeSplit;
 import 'pdfa.dart';
 import 'storage.dart';
@@ -212,7 +213,7 @@ class Ingestor {
           b.writeln();
         }
       }
-      return (b.toString().trim(), d.pages.length);
+      return (cleanContent(b.toString()), d.pages.length);
     } finally {
       await d.dispose();
     }
@@ -403,7 +404,7 @@ class Ingestor {
   }
 
   static String joinText(List<OcrPage> pages) =>
-      pages.map((p) => p.text.trim()).where((t) => t.isNotEmpty).join('\n\n');
+      cleanContent(pages.map((p) => p.text.trim()).where((t) => t.isNotEmpty).join('\n\n'));
 
   /// Anteprima della prima pagina in PNG.
   Future<void> makeThumbnail(String pdfPath, String docId) async {

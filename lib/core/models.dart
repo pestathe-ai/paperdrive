@@ -5,6 +5,8 @@ library;
 
 import 'dart:math';
 
+import 'text_utils.dart';
+
 final Random _rnd = Random.secure();
 
 /// Identificativo casuale di 16 caratteri esadecimali.
@@ -428,7 +430,7 @@ class Document with Syncable {
         correspondentId: j['corr'] as String?,
         typeId: j['type'] as String?,
         tagIds: ((j['tags'] as List?) ?? const []).cast<String>().toSet(),
-        content: j['content'] as String? ?? '',
+        content: cleanContent(j['content'] as String? ?? ''),
         notes: ((j['notes'] as List?) ?? const [])
             .map((n) => Note.fromJson((n as Map).cast<String, dynamic>()))
             .toList(),

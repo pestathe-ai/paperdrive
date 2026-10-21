@@ -186,6 +186,7 @@ Future<Set<String>?> pickTags(BuildContext context, Set<String> selected) {
                           if (name == null || name.isEmpty) return;
                           final t = Tag(
                             name: name,
+                            algorithm: MatchAlgorithm.auto,
                             color: tagPalette[app.archive.tags.length % tagPalette.length],
                           );
                           app.saveTag(t);
@@ -317,7 +318,7 @@ Future<EntityChoice?> pickCorrespondent(BuildContext context, String? selected) 
     items: app.archive.activeCorrespondents,
     selected: selected,
     create: (name) {
-      final e = NamedEntity(name: name);
+      final e = NamedEntity(name: name, algorithm: MatchAlgorithm.auto);
       app.saveCorrespondent(e);
       return e;
     },
@@ -332,7 +333,7 @@ Future<EntityChoice?> pickType(BuildContext context, String? selected) {
     items: app.archive.activeTypes,
     selected: selected,
     create: (name) {
-      final e = NamedEntity(name: name);
+      final e = NamedEntity(name: name, algorithm: MatchAlgorithm.auto);
       app.saveType(e);
       return e;
     },

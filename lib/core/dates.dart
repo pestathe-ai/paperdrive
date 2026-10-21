@@ -37,7 +37,7 @@ List<DateTime> findDates(String text, {DateTime? now}) =>
 /// Come [findDates], con la posizione nel testo normalizzato.
 List<(int, DateTime)> findDatesWithPos(String text, {DateTime? now}) {
   final ref = now ?? DateTime.now();
-  final t = normalize(text);
+  final t = normalize(cleanContent(text));
   final found = <(int, DateTime)>[];
 
   // gg/mm/aaaa, gg-mm-aa, gg.mm.aaaa (ordine europeo).
@@ -82,7 +82,7 @@ List<(int, DateTime)> findDatesWithPos(String text, {DateTime? now}) {
 /// La prima data plausibile del testo, o null.
 DateTime? detectDate(String text, {DateTime? now}) {
   final all = findDatesWithPos(text, now: now);
-  final t = normalize(text);
+  final t = normalize(cleanContent(text));
   for (final (pos, d) in all) {
     final from = pos - 35 < 0 ? 0 : pos - 35;
     final before = t.substring(from, pos);

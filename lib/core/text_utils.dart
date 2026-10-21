@@ -78,3 +78,19 @@ double partialSimilarity(String pattern, String text) {
   final d = bestSubstringDistance(p, normalize(text));
   return 1 - d / p.length;
 }
+
+/// Pulisce il testo estratto dai PDF (PDFium usa `\r\n`, a volte `\r` da
+/// solo, spazi non separabili e trattini morbidi): righe con `\n`, spazi
+/// normali, niente spazi in fondo alle righe.
+String cleanContent(String s) {
+  var t = s
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\n')
+      .replaceAll('\u00A0', ' ')
+      .replaceAll('\u00AD', '')
+      .replaceAll('\uFFFE', '')
+      .replaceAll('\u0002', '-')
+      .replaceAll('\t', ' ');
+  t = t.split('\n').map((l) => l.trimRight()).join('\n');
+  return t.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+}
