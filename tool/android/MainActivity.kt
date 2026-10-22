@@ -1,6 +1,8 @@
 package dev.paperdrive.paperdrive
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
@@ -8,6 +10,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Riceve i file da "Condividi" (ACTION_SEND / SEND_MULTIPLE) e da "Apri con"
@@ -27,6 +30,28 @@ class MainActivity : FlutterActivity() {
                     val out = ArrayList<Map<String, String>>(pending)
                     pending.clear()
                     result.success(out)
+                }
+                // Immagini che Flutter non legge (HEIC, AVIF, GIF, BMP, WEBP) → JPEG.
+                "toJpeg" -> {
+                    val src = call.argument<String>("path")
+                    val dst = call.argument<String>("out")
+                    if (src == null || dst == null) {
+                        result.error("args", "path/out mancanti", null)
+                    } else {
+                        Thread {
+                            try {
+                                val source = ImageDecoder.createSource(File(src))
+                                val bmp = ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                                }
+                                FileOutputStream(dst).use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+                                bmp.recycle()
+                                runOnUiThread { result.success(true) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("decode", e.message, null) }
+                            }
+                        }.start()
+                    }
                 }
                 else -> result.notImplemented()
             }
@@ -95,7 +120,23 @@ class MainActivity : FlutterActivity() {
                     type == "application/pdf" -> ".pdf"
                     type == "image/png" -> ".png"
                     type == "image/webp" -> ".webp"
+                    type == "image/heic" || type == "image/heif" -> ".heic"
+                    type == "image/tiff" -> ".tif"
                     type.startsWith("image/") -> ".jpg"
+                    type == "message/rfc822" -> ".eml"
+                    type == "text/plain" -> ".txt"
+                    type == "text/csv" -> ".csv"
+                    type == "text/html" -> ".html"
+                    type == "application/rtf" -> ".rtf"
+                    type == "application/msword" -> ".doc"
+                    type == "application/vnd.ms-excel" -> ".xls"
+                    type == "application/vnd.ms-powerpoint" -> ".ppt"
+                    type.endsWith("wordprocessingml.document") -> ".docx"
+                    type.endsWith("spreadsheetml.sheet") -> ".xlsx"
+                    type.endsWith("presentationml.presentation") -> ".pptx"
+                    type.endsWith("opendocument.text") -> ".odt"
+                    type.endsWith("opendocument.spreadsheet") -> ".ods"
+                    type.endsWith("opendocument.presentation") -> ".odp"
                     else -> ".pdf"
                 }
             }

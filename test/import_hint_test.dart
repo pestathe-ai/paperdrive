@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:paperdrive/core/archive.dart';
+import 'package:paperdrive/core/formats.dart';
 import 'package:paperdrive/core/import_hint.dart';
 import 'package:paperdrive/core/models.dart';
 
@@ -17,7 +18,10 @@ void main() {
   test('formati importabili', () {
     expect(importableFile('a.PDF'), isTrue);
     expect(importableFile('foto.jpeg'), isTrue);
-    expect(importableFile('foglio.xlsx'), isFalse);
+    expect(importableFile('foglio.xlsx'), isTrue);
+    expect(importableFile('foto.HEIC'), isTrue);
+    expect(importableFile('archivio.zip'), isFalse);
+    expect(importableFile('Contratto', mimeType: 'application/vnd.google-apps.document'), isTrue);
   });
 
   group('documento da cartelle', () {
@@ -59,5 +63,16 @@ void main() {
       applyFolderHint(a, d, const []);
       expect(d.typeId, 'st-banca');
     });
+  });
+
+  test('formati e conversioni', () {
+    expect(fileKind('scan.TIF'), FileKind.tiff);
+    expect(fileKind('nota.txt'), FileKind.text);
+    expect(fileKind('posta.eml'), FileKind.mail);
+    expect(fileKind('Contratto.docx'), FileKind.office);
+    expect(googleTypeFor('Bilancio.xlsx'), 'application/vnd.google-apps.spreadsheet');
+    expect(googleTypeFor('Slide.pptx'), 'application/vnd.google-apps.presentation');
+    expect(googleTypeFor('Lettera.odt'), 'application/vnd.google-apps.document');
+    expect(sourceMimeType('a.docx'), contains('wordprocessingml'));
   });
 }

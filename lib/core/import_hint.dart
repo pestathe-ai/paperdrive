@@ -7,6 +7,7 @@ import 'ai.dart' show findByName;
 import 'archive.dart';
 import 'dates.dart';
 import 'extract.dart' show meaningfulFileName;
+import 'formats.dart';
 import 'models.dart';
 import 'text_utils.dart';
 
@@ -14,8 +15,8 @@ import 'text_utils.dart';
 const String inboxFolderName = 'Da importare';
 
 /// Formati che si possono importare.
-bool importableFile(String name) =>
-    RegExp(r'\.(pdf|jpe?g|png|webp)$', caseSensitive: false).hasMatch(name);
+bool importableFile(String name, {String? mimeType}) =>
+    fileKind(name, mimeType: mimeType) != FileKind.unsupported;
 
 final RegExp _year = RegExp(r'^(19|20)\d{2}$');
 

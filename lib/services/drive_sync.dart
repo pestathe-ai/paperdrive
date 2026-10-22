@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 
 import '../core/archive.dart';
+import '../core/formats.dart';
 import '../core/import_hint.dart' show inboxFolderName;
 import '../core/models.dart';
 import '../core/organize.dart';
@@ -101,10 +102,11 @@ class _Remote {
 /// Il legame è nelle proprietà del file su Drive (pdArchive, pdDoc, pdKind).
 /// Un file da importare, con le cartelle (relative a "Da importare").
 class InboxFile {
-  InboxFile(this.id, this.name, this.folders);
+  InboxFile(this.id, this.name, this.folders, {this.mimeType});
   final String id;
   final String name;
   final List<String> folders;
+  final String? mimeType;
 }
 
 class DriveSync {
@@ -551,7 +553,7 @@ class DriveSync {
             if (f.mimeType == folderMime) {
               if (path.length < 8) await walk(f.id!, [...path, f.name ?? '']);
             } else {
-              out.add(InboxFile(f.id!, f.name ?? 'documento', path));
+              out.add(InboxFile(f.id!, f.name ?? 'documento', path, mimeType: f.mimeType));
             }
           }
         }
@@ -563,6 +565,67 @@ class DriveSync {
 
   Future<Uint8List> downloadInboxFile(String id) =>
       _withApi((api) async => Uint8List.fromList(await _download(api, id)));
+
+  /// Converte in PDF con Google Drive un documento Office (Word, Excel,
+  /// PowerPoint, OpenDocument, RTF, HTML, CSV) o un documento nativo di
+  /// Google. Con [fileId] usa il file già su Drive, altrimenti carica
+  /// [bytes] come copia temporanea. La copia viene poi cancellata.
+  Future<Uint8List> convertToPdf({
+    required String name,
+    String? fileId,
+    String? mimeType,
+    List<int>? bytes,
+    required String? folderId,
+  }) =>
+      _withApi((api) async {
+        if (fileId != null && isGoogleNative(mimeType)) {
+          return _export(api, fileId);
+        }
+        final target = googleTypeFor(name);
+        if (target == null) throw Exception('Formato non convertibile: $name');
+        String tmp;
+        if (fileId != null) {
+          final copy = await api.files.copy(
+            drive.File()
+              ..name = 'paperdrive-conversione $name'
+              ..mimeType = target,
+            fileId,
+            $fields: 'id',
+          );
+          tmp = copy.id!;
+        } else {
+          final root = folderId ?? await _ownFolder(api);
+          final created = await api.files.create(
+            drive.File()
+              ..name = 'paperdrive-conversione $name'
+              ..mimeType = target
+              ..parents = [root],
+            uploadMedia: _media(bytes ?? const [], sourceMimeType(name)),
+            $fields: 'id',
+          );
+          tmp = created.id!;
+        }
+        try {
+          return await _export(api, tmp);
+        } finally {
+          try {
+            await api.files.delete(tmp);
+          } catch (_) {}
+        }
+      });
+
+  Future<Uint8List> _export(drive.DriveApi api, String id) async {
+    final media = await api.files.export(
+      id,
+      'application/pdf',
+      downloadOptions: drive.DownloadOptions.fullMedia,
+    ) as drive.Media;
+    final out = <int>[];
+    await for (final chunk in media.stream) {
+      out.addAll(chunk);
+    }
+    return Uint8List.fromList(out);
+  }
 
   /// Sposta il file importato nel cestino di Drive (recuperabile per 30 giorni).
   Future<void> trashInboxFile(String id) => _withApi((api) async {

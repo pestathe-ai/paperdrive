@@ -30,12 +30,40 @@ filters = '''
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="application/pdf"/>
                 <data android:mimeType="image/*"/>
+                <data android:mimeType="text/plain"/>
+                <data android:mimeType="text/csv"/>
+                <data android:mimeType="text/html"/>
+                <data android:mimeType="message/rfc822"/>
+                <data android:mimeType="application/rtf"/>
+                <data android:mimeType="application/msword"/>
+                <data android:mimeType="application/vnd.ms-excel"/>
+                <data android:mimeType="application/vnd.ms-powerpoint"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.text"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="application/pdf"/>
                 <data android:mimeType="image/*"/>
+                <data android:mimeType="text/plain"/>
+                <data android:mimeType="text/csv"/>
+                <data android:mimeType="text/html"/>
+                <data android:mimeType="message/rfc822"/>
+                <data android:mimeType="application/rtf"/>
+                <data android:mimeType="application/msword"/>
+                <data android:mimeType="application/vnd.ms-excel"/>
+                <data android:mimeType="application/vnd.ms-powerpoint"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.text"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
@@ -43,6 +71,21 @@ filters = '''
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="content"/>
                 <data android:mimeType="application/pdf"/>
+                <data android:mimeType="image/*"/>
+                <data android:mimeType="text/plain"/>
+                <data android:mimeType="text/csv"/>
+                <data android:mimeType="text/html"/>
+                <data android:mimeType="message/rfc822"/>
+                <data android:mimeType="application/rtf"/>
+                <data android:mimeType="application/msword"/>
+                <data android:mimeType="application/vnd.ms-excel"/>
+                <data android:mimeType="application/vnd.ms-powerpoint"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.text"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet"/>
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation"/>
             </intent-filter>
 '''
 if 'android.intent.action.SEND"' not in s:

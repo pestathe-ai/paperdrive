@@ -1,7 +1,7 @@
 name: paperdrive
 description: Archivio documenti in stile Paperless-ngx, con OCR sul telefono e sincronizzazione su Google Drive.
 publish_to: 'none'
-version: 0.9.6+18
+version: 0.10.0+19
 
 environment:
   sdk: ^3.13.0
@@ -18,6 +18,7 @@ dependencies:
   cross_file: ^0.3.4
   pdfrx: ^2.6.5
   pdf: ^3.13.1
+  image: ^4.2.0
   google_mlkit_document_scanner: ^0.6.1
   google_mlkit_text_recognition: ^0.17.1
   google_mlkit_barcode_scanning: ^0.16.1

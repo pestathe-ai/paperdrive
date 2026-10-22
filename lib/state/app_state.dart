@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
+import 'package:enough_mail/enough_mail.dart' show ContentDisposition, MimeMessage;
 import 'package:material_ui/material_ui.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -11,6 +13,7 @@ import '../core/archive.dart';
 import '../core/classifier.dart';
 import '../core/dates.dart';
 import '../core/extract.dart' show detectIssuer;
+import '../core/formats.dart';
 import '../core/import_hint.dart';
 import '../core/mail_rules.dart';
 import '../core/matching.dart';
@@ -211,16 +214,82 @@ class AppState extends ChangeNotifier {
   Future<List<String>> importFiles() async {
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+      allowedExtensions: importableExtensions,
     );
     if (files.isEmpty) return const [];
     final staged = <StagedInput>[];
+    final errors = <String>[];
     for (final f in files) {
       busy = 'Preparazione di ${f.name}…';
       notifyListeners();
-      staged.add(await ingestor.stageFile(f.name, await f.readAsBytes()));
+      try {
+        staged.addAll(await _stage(f.name, await f.readAsBytes()));
+      } catch (e) {
+        errors.add('${f.name}: $e');
+      }
     }
-    return _ingestAll(staged);
+    busy = null;
+    return [...errors, ...await _ingestAll(staged)];
+  }
+
+  /// Prepara un file di qualsiasi formato supportato: PDF e immagini sul
+  /// telefono; Word, Excel, PowerPoint e simili convertiti in PDF da Google
+  /// Drive; email (.eml) col testo in PDF e gli allegati come documenti.
+  Future<List<StagedInput>> _stage(
+    String name,
+    Uint8List? bytes, {
+    DocSource source = DocSource.file,
+    InboxFile? remote,
+  }) async {
+    switch (fileKind(name, mimeType: remote?.mimeType)) {
+      case FileKind.office:
+        if (!settings.driveEnabled) {
+          throw Exception('Word, Excel e PowerPoint vengono convertiti in PDF da Google Drive: '
+              'collega Drive dalle Impostazioni');
+        }
+        final pdf = await drive.convertToPdf(
+          name: name,
+          fileId: remote?.id,
+          mimeType: remote?.mimeType,
+          bytes: bytes,
+          folderId: _folder,
+        );
+        final original = isGoogleNative(remote?.mimeType) ? '$name.pdf' : name;
+        return [await ingestor.stagePdfBytes(pdf, original, source: source)];
+      case FileKind.mail:
+        final msg = MimeMessage.parseFromData(bytes!);
+        final info = MailImporter.infoOf(msg);
+        final out = <StagedInput>[
+          await ingestor.textToPdf(
+            name: name,
+            title: info.subject,
+            header: [
+              ('Da', info.fromName.isEmpty ? info.from : '${info.fromName} <${info.from}>'),
+              if (info.to.isNotEmpty) ('A', info.to),
+              if (info.date != null) ('Data', info.date!.toLocal().toString().substring(0, 16)),
+            ],
+            body: info.body,
+            source: source,
+          ),
+        ];
+        final seen = <String>{};
+        for (final ci in msg.findContentInfo(disposition: ContentDisposition.attachment)) {
+          final fname = ci.fileName;
+          if (fname == null || !seen.add(ci.fetchId) || !importableFile(fname)) continue;
+          final data = msg.getPart(ci.fetchId)?.decodeContentBinary();
+          if (data == null || data.isEmpty) continue;
+          try {
+            out.addAll(await _stage(fname, data, source: source));
+          } catch (_) {
+            // Un allegato illeggibile non blocca l'email.
+          }
+        }
+        return out;
+      case FileKind.unsupported:
+        throw Exception('formato non supportato');
+      default:
+        return [await ingestor.stageFile(name, bytes!, source: source)];
+    }
   }
 
   /// Divide con i codici a barre (se attivo) e importa ogni parte.
@@ -644,16 +713,19 @@ class AppState extends ChangeNotifier {
       for (var i = 0; i < files.length && !_stopImport; i++) {
         final f = files[i];
         final prefix = '(${i + 1}/${files.length}) ';
-        if (!importableFile(f.name)) {
+        final kind = fileKind(f.name, mimeType: f.mimeType);
+        if (kind == FileKind.unsupported) {
           skipped++;
           continue;
         }
-        busy = '$prefix${f.name}: download…';
+        busy = '$prefix${f.name}: ${kind == FileKind.office ? 'conversione in PDF' : 'download'}…';
         notifyListeners();
         try {
-          final bytes = await drive.downloadInboxFile(f.id);
-          final staged = await ingestor.stageFile(f.name, bytes);
-          final results = await _ingestSplitting(staged, prefix: prefix, folders: f.folders);
+          final bytes = kind == FileKind.office ? null : await drive.downloadInboxFile(f.id);
+          final results = <IngestResult>[];
+          for (final staged in await _stage(f.name, bytes, remote: f)) {
+            results.addAll(await _ingestSplitting(staged, prefix: prefix, folders: f.folders));
+          }
           if (results.every((r) => r.ok)) {
             await drive.trashInboxFile(f.id);
             if (results.any((r) => r.doc != null)) {
@@ -900,7 +972,7 @@ class AppState extends ChangeNotifier {
     for (final (path, name) in files) {
       try {
         final bytes = await File(path).readAsBytes();
-        staged.add(await ingestor.stageFile(name, bytes, source: DocSource.share));
+        staged.addAll(await _stage(name, bytes, source: DocSource.share));
       } catch (_) {}
       try {
         await File(path).delete();

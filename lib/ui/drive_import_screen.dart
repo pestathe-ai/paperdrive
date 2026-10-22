@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../core/formats.dart' show supportedFormatsLabel;
 import '../core/import_hint.dart';
 import '../services/drive_sync.dart' show InboxFile;
 import '../state/app_state.dart';
@@ -68,7 +69,7 @@ class _DriveImportScreenState extends State<DriveImportScreen> {
     final theme = Theme.of(context);
     final s = app.settings;
     final list = files ?? const <InboxFile>[];
-    final importable = list.where((f) => importableFile(f.name)).length;
+    final importable = list.where((f) => importableFile(f.name, mimeType: f.mimeType)).length;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Importa da Drive'),
@@ -140,7 +141,7 @@ class _DriveImportScreenState extends State<DriveImportScreen> {
                         ? 'La cartella è vuota'
                         : '$importable documenti da importare'
                             '${list.length > importable ? ' (${list.length - importable} file non supportati)' : ''}'),
-                    subtitle: const Text('PDF e foto (JPG, PNG, WEBP)'),
+                    subtitle: const Text(supportedFormatsLabel),
                   ),
                   FilledButton.icon(
                     icon: const Icon(Icons.download),
@@ -166,10 +167,10 @@ class _DriveImportScreenState extends State<DriveImportScreen> {
                     ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(importableFile(f.name) ? Icons.description_outlined : Icons.block),
+                      leading: Icon(importableFile(f.name, mimeType: f.mimeType) ? Icons.description_outlined : Icons.block),
                       title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(
-                        importableFile(f.name)
+                        importableFile(f.name, mimeType: f.mimeType)
                             ? '${f.folders.isEmpty ? '' : '${f.folders.join(' / ')}\n'}${_preview(f)}'
                             : 'Formato non supportato: resta nella cartella',
                       ),

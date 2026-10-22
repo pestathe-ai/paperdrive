@@ -1,20 +1,23 @@
+import 'dart:convert' show Latin1Decoder, Utf8Decoder;
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart' show md5;
-import 'package:flutter/services.dart' show PlatformException, rootBundle;
+import 'package:flutter/services.dart' show MethodChannel, PlatformException, rootBundle;
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart'
     show BarcodeFormat, BarcodeScanner;
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart'
     show InputImage, TextRecognizer, TextRecognitionScript;
+import 'package:image/image.dart' as imglib;
 import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart' as pdfl;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfrx/pdfrx.dart'
     show PdfDocument, PdfImageExt, PdfPage, PdfPageRotation, PdfPageWithRotationExtension;
 
+import '../core/formats.dart';
 import '../core/models.dart';
 import '../core/text_utils.dart' show cleanContent;
 import '../core/organize.dart' show planBarcodeSplit;
@@ -152,22 +155,64 @@ class Ingestor {
     return path;
   }
 
-  /// Prepara un file (PDF o immagine) per l'archivio.
+  static const MethodChannel _native = MethodChannel('paperdrive/share');
+
+  /// Prepara un file per l'archivio: PDF, immagini (anche HEIC, WEBP, TIFF…)
+  /// e testo. Word, Excel e simili li converte Google Drive (vedi AppState).
   Future<StagedInput> stageFile(
     String name,
     Uint8List bytes, {
     DocSource source = DocSource.file,
   }) async {
     final ext = p.extension(name).toLowerCase();
-    if (ext == '.pdf') {
-      final path = storage.tmpPath('${newId()}.pdf');
-      await File(path).writeAsBytes(bytes, flush: true);
-      return StagedInput(pdfPath: path, originalName: name, source: source);
+    switch (fileKind(name)) {
+      case FileKind.pdf:
+        return stagePdfBytes(bytes, name, source: source);
+      case FileKind.image:
+        final img = storage.tmpPath('${newId()}$ext');
+        await File(img).writeAsBytes(bytes, flush: true);
+        return StagedInput(pdfPath: await imagesToPdf([img]), originalName: name, source: source, ocrImages: [img]);
+      case FileKind.otherImage:
+        // HEIC delle foto, WEBP, GIF, BMP, AVIF: li decodifica Android.
+        final src = storage.tmpPath('${newId()}$ext');
+        await File(src).writeAsBytes(bytes, flush: true);
+        final jpg = storage.tmpPath('${newId()}.jpg');
+        try {
+          await _native.invokeMethod<bool>('toJpeg', {'path': src, 'out': jpg});
+        } on PlatformException catch (e) {
+          throw Exception('immagine non leggibile (${e.message})');
+        }
+        return StagedInput(pdfPath: await imagesToPdf([jpg]), originalName: name, source: source, ocrImages: [jpg]);
+      case FileKind.tiff:
+        final pages = <String>[];
+        final decoded = imglib.decodeTiff(bytes);
+        if (decoded == null) throw Exception('TIFF non leggibile');
+        for (final frame in decoded.frames) {
+          final path = storage.tmpPath('${newId()}.jpg');
+          await File(path).writeAsBytes(imglib.encodeJpg(frame, quality: 90), flush: true);
+          pages.add(path);
+        }
+        return StagedInput(pdfPath: await imagesToPdf(pages), originalName: name, source: source, ocrImages: pages);
+      case FileKind.text:
+        String body;
+        try {
+          body = const Utf8Decoder().convert(bytes).replaceFirst('\uFEFF', '');
+        } catch (_) {
+          body = const Latin1Decoder().convert(bytes);
+        }
+        return textToPdf(name: name, title: p.basenameWithoutExtension(name), header: const [], body: body, source: source);
+      case FileKind.mail:
+      case FileKind.office:
+      case FileKind.unsupported:
+        throw UnsupportedError('Formato non supportato qui: $name');
     }
-    final img = storage.tmpPath('${newId()}$ext');
-    await File(img).writeAsBytes(bytes, flush: true);
-    final pdf = await imagesToPdf([img]);
-    return StagedInput(pdfPath: pdf, originalName: name, source: source, ocrImages: [img]);
+  }
+
+  /// Un PDF già pronto (anche convertito da Drive), con il nome originale.
+  Future<StagedInput> stagePdfBytes(List<int> bytes, String originalName, {DocSource source = DocSource.file}) async {
+    final path = storage.tmpPath('${newId()}.pdf');
+    await File(path).writeAsBytes(bytes, flush: true);
+    return StagedInput(pdfPath: path, originalName: originalName, source: source);
   }
 
   static String _clean(String s) => cleanPdfText(s);
