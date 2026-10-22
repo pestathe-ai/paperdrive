@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Versione a un colore per le icone a tema di Android 13+. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+        android:pathData="M31 40 L54 24 L77 40 L77 82 Q77 85 74 85 L34 85 Q31 85 31 82 Z M39 52.5 Q39 50 41.5 50 L48.5 50 L51.5 53 L61.5 53 Q64 53 64 55.5 L64 67.5 Q64 70 61.5 70 L41.5 70 Q39 70 39 67.5 Z"/>
+</vector>

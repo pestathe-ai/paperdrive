@@ -28,7 +28,7 @@ class MailScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text(
-              'Paperdrive legge le caselle con IMAP e importa gli allegati (PDF e immagini) '
+              'D. Paper Lab legge le caselle con IMAP e importa gli allegati (PDF e immagini) '
               'o il testo dei messaggi che rispettano le tue regole. Il controllo avviene '
               'all\'apertura dell\'app e quando tocchi "Controlla ora".',
               style: theme.textTheme.bodySmall,

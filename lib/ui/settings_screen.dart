@@ -334,9 +334,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListenableBuilder(listenable: app.ai, builder: (context, _) => _aiSection(app, theme)),
           const Divider(height: 32),
           ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('Paperdrive'),
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset('assets/logo.png', width: 36, height: 36),
+            ),
+            title: const Text('D. Paper Lab'),
             subtitle: Text(
+              'un\'app Dom Studio\n'
               '${app.archive.activeDocuments.length} documenti · '
               '${app.archive.activeTags.length} tag · '
               '${app.archive.activeCorrespondents.length} corrispondenti',

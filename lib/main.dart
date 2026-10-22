@@ -20,24 +20,42 @@ class PaperdriveApp extends StatelessWidget {
 
   final AppState state;
 
-  static const Color seed = Color(0xFF17541F);
+  // Colori Dom Studio (stile Domus).
+  static const Color bluCasa = Color(0xFF1D3A8A);
+  static const Color bluCasaChiaro = Color(0xFF8FA9F2);
+  static const Color aranciTetto = Color(0xFFF28C38);
+  static const Color carta = Color(0xFFFFF8F0);
+  static const Color bluNotte = Color(0xFF121621);
 
   @override
   Widget build(BuildContext context) {
     return AppScope(
       state: state,
       child: MaterialApp(
-        title: 'Paperdrive',
+        title: 'D. Paper Lab',
         debugShowCheckedModeBanner: false,
         locale: const Locale('it'),
         supportedLocales: const [Locale('it'), Locale('en')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: seed),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: bluCasa,
+            primary: bluCasa,
+            tertiary: aranciTetto,
+            surface: carta,
+          ),
+          scaffoldBackgroundColor: carta,
           useMaterial3: true,
         ),
         darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: bluCasa,
+            brightness: Brightness.dark,
+            primary: bluCasaChiaro,
+            tertiary: aranciTetto,
+            surface: bluNotte,
+          ),
+          scaffoldBackgroundColor: bluNotte,
           useMaterial3: true,
         ),
         home: const HomeScreen(),

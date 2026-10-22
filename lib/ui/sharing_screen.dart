@@ -44,7 +44,7 @@ class _SharingScreenState extends State<SharingScreen> {
 
   Future<void> invite(AppState app) async {
     final email = TextEditingController();
-    final msg = TextEditingController(text: 'Ti invito al mio archivio documenti Paperdrive.');
+    final msg = TextEditingController(text: 'Ti invito al mio archivio documenti D. Paper Lab.');
     var canEdit = true;
     final ok = await showDialog<bool>(
       context: context,
@@ -301,7 +301,7 @@ class _SharingScreenState extends State<SharingScreen> {
             padding: const EdgeInsets.all(16),
             child: Text(
               'Come funziona: l\'archivio è la cartella "Paperdrive" su Google Drive. '
-              'Chi inviti riceve un\'email da Google; poi, nella sua app Paperdrive, apre '
+              'Chi inviti riceve un\'email da Google; poi, nella sua app D. Paper Lab, apre '
               '"Utenti e condivisione" e sceglie "Usa un archivio condiviso con me". '
               'Ogni documento ricorda chi l\'ha aggiunto e chi l\'ha modificato per ultimo. '
               'I permessi li applica Google Drive: chi ha accesso vede tutti i documenti dell\'archivio.',

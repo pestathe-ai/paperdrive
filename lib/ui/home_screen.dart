@@ -276,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               )
             : AppBar(
-                title: const Text('Paperdrive'),
+                title: const Text('D. Paper Lab'),
                 actions: [
                   IconButton(
                     tooltip: 'Sincronizza',
@@ -527,8 +527,31 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Paperdrive', style: Theme.of(context).textTheme.headlineSmall),
-                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset('assets/logo.png', width: 48, height: 48),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'D. Paper Lab',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            Text('un\'app Dom Studio', style: Theme.of(context).textTheme.bodySmall),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   Text('$total documenti'
                       '${s.driveEnabled ? ' · Drive: ${s.driveAccount ?? 'collegato'}' : ' · solo sul telefono'}'),
                 ],

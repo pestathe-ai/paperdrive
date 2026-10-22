@@ -87,7 +87,7 @@ class _DriveImportScreenState extends State<DriveImportScreen> {
               children: [
                 Text(
                   'Copia i tuoi documenti (anche intere cartelle, per esempio da Dropbox) nella '
-                  'cartella "Paperdrive/$inboxFolderName" su Google Drive. Paperdrive li legge, '
+                  'cartella "Paperdrive/$inboxFolderName" su Google Drive. D. Paper Lab li legge, '
                   'li archivia e poi li toglie da lì (finiscono nel cestino di Drive).',
                   style: theme.textTheme.bodyMedium,
                 ),

@@ -100,7 +100,7 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
           children: [
             Text(
               'Ogni documento che scansioni, importi, ricevi per email o condividi verso '
-              'Paperdrive viene letto, classificato, rinominato e archiviato da solo.',
+              'D. Paper Lab viene letto, classificato, rinominato e archiviato da solo.',
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 12),

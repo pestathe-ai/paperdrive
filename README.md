@@ -1,4 +1,6 @@
-# Paperdrive
+# D. Paper Lab
+
+*un'app Dom Studio* (nome interno del progetto: Paperdrive).
 
 Archivio di documenti per Android ispirato a [Paperless-ngx](https://docs.paperless-ngx.com/):
 scansioni e PDF con OCR, tag, corrispondenti, tipi, ricerca nel testo e regole
