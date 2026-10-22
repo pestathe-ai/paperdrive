@@ -19,6 +19,15 @@ Precedenza: regole scritte dall'utente e documenti simili corretti a mano > AI >
 predefinite. La data dell'AI viene usata solo se compare davvero nel testo. Dal menu di un
 documento: *Rileggi con l'AI*. Richiede Android 11+ e un telefono arm64.
 
+### Cartella di importazione su Drive (v0.9)
+
+Come la *consume folder* di Paperless: copia i documenti (anche intere cartelle, per esempio da
+Dropbox) in `Paperdrive/Da importare` su Google Drive e premi *Menu → Importa da Drive* (oppure
+attiva l'importazione automatica all'apertura). Ogni file viene letto, classificato e archiviato,
+poi spostato nel cestino di Drive. L'ordine fatto a mano viene rispettato: la prima cartella
+diventa la categoria, le sottocartelle i tag, una cartella con l'anno dà l'anno, un nome di file
+già chiaro resta il titolo. L'app impara da questi documenti come classifichi e rinomini.
+
 ### Impara dalle correzioni (v0.7)
 
 Quando correggi categoria, mittente o titolo di un documento, l'app impara: i documenti simili
@@ -88,7 +97,7 @@ L'app usa la cartella `Paperdrive` (e quelle che altre persone condividono con t
 - In un archivio condiviso i permessi li applica Google Drive: chi ha accesso vede tutti i documenti (niente documenti privati per singolo utente).
 - La versione PDF/A viene creata per scansioni, foto e PDF senza testo; per i PDF digitali si può crearla dal menu del documento.
 - L'indice è un unico file JSON: pensato per centinaia/qualche migliaio di documenti. Se due persone modificano lo stesso documento quasi insieme, vince l'ultima modifica.
-- Non presenti: cartella di importazione automatica, OCR per alfabeti non latini, API per altre app.
+- Non presenti: OCR per alfabeti non latini, API per altre app.
 - La firma dell'APK è una chiave di sviluppo pubblica (vedi `tool/signing/`).
 
 ## Sviluppo

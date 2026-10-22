@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 
 import '../core/archive.dart';
+import '../core/import_hint.dart' show inboxFolderName;
 import '../core/models.dart';
 import '../core/organize.dart';
 import '../core/sync_merge.dart';
@@ -97,6 +99,14 @@ class _Remote {
 /// Sul telefono i file hanno nomi interni (`<id>.pdf`, `<id>.archive2.pdf`);
 /// su Drive hanno nomi leggibili dentro cartelle come `Bolletta/2024/`.
 /// Il legame è nelle proprietà del file su Drive (pdArchive, pdDoc, pdKind).
+/// Un file da importare, con le cartelle (relative a "Da importare").
+class InboxFile {
+  InboxFile(this.id, this.name, this.folders);
+  final String id;
+  final String name;
+  final List<String> folders;
+}
+
 class DriveSync {
   DriveSync(this.storage);
 
@@ -517,6 +527,69 @@ class DriveSync {
         final bytes = await _download(api, f.id);
         await storage.docFile(fileName).writeAsBytes(bytes, flush: true);
         return true;
+      });
+
+  // ------------------------------------------------------------------
+  // Cartella di importazione ("Da importare")
+
+  /// I file nella cartella "Da importare" (e sottocartelle), con le
+  /// cartelle in cui stanno. La cartella viene creata se manca.
+  Future<List<InboxFile>> listInbox({required String? folderId}) => _withApi((api) async {
+        final root = folderId ?? await _ownFolder(api);
+        final inbox = await _folderFor(api, root, [inboxFolderName]);
+        final out = <InboxFile>[];
+        Future<void> walk(String id, List<String> path) async {
+          final items = await _listAll(api, "'${_q(id)}' in parents and trashed = false");
+          for (final f in items) {
+            if (f.id == null) continue;
+            if (f.mimeType == folderMime) {
+              if (path.length < 8) await walk(f.id!, [...path, f.name ?? '']);
+            } else {
+              out.add(InboxFile(f.id!, f.name ?? 'documento', path));
+            }
+          }
+        }
+
+        await walk(inbox, const []);
+        out.sort((x, y) => '${x.folders.join('/')}/${x.name}'.compareTo('${y.folders.join('/')}/${y.name}'));
+        return out;
+      });
+
+  Future<Uint8List> downloadInboxFile(String id) =>
+      _withApi((api) async => Uint8List.fromList(await _download(api, id)));
+
+  /// Sposta il file importato nel cestino di Drive (recuperabile per 30 giorni).
+  Future<void> trashInboxFile(String id) => _withApi((api) async {
+        try {
+          await api.files.update(drive.File()..trashed = true, id);
+        } on drive.DetailedApiRequestError catch (e) {
+          if (e.status != 404) rethrow;
+        }
+      });
+
+  /// Toglie le sottocartelle rimaste vuote in "Da importare".
+  Future<void> cleanInbox({required String? folderId}) => _withApi((api) async {
+        final root = folderId ?? await _ownFolder(api);
+        final inbox = await _folderFor(api, root, [inboxFolderName]);
+        Future<bool> clean(String id, {bool top = false}) async {
+          final items = await _listAll(api, "'${_q(id)}' in parents and trashed = false");
+          var empty = true;
+          for (final f in items) {
+            if (f.id == null) continue;
+            if (f.mimeType == folderMime && await clean(f.id!)) continue;
+            empty = false;
+          }
+          if (empty && !top) {
+            try {
+              await api.files.update(drive.File()..trashed = true, id);
+            } catch (_) {
+              return false;
+            }
+          }
+          return empty;
+        }
+
+        await clean(inbox, top: true);
       });
 
   // ------------------------------------------------------------------

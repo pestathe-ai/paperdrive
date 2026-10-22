@@ -4,6 +4,7 @@ import '../core/models.dart';
 import '../core/search.dart' show snippet;
 import '../state/app_state.dart';
 import 'document_screen.dart';
+import 'drive_import_screen.dart';
 import 'filter_sheet.dart';
 import 'mail_screen.dart';
 import 'manage_screen.dart';
@@ -564,6 +565,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ? null
                   : Text('${app.archive.activeWorkflows.length}'),
               onTap: () => go(const WorkflowsScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.drive_folder_upload_outlined),
+              title: const Text('Importa da Drive'),
+              subtitle: const Text('Cartella "Da importare"'),
+              onTap: () => go(const DriveImportScreen()),
             ),
             ListTile(
               leading: const Icon(Icons.mail_outline),

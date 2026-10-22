@@ -1,7 +1,7 @@
 name: paperdrive
 description: Archivio documenti in stile Paperless-ngx, con OCR sul telefono e sincronizzazione su Google Drive.
 publish_to: 'none'
-version: 0.8.0+11
+version: 0.9.0+12
 
 environment:
   sdk: ^3.13.0
@@ -26,6 +26,7 @@ dependencies:
   googleapis: ^17.0.0
   http: ^1.6.0
   crypto: ^3.0.6
+  wakelock_plus: ^1.2.8
   # AI sul telefono (LiteRT-LM di Google, gira sulla GPU, niente cloud).
   flutter_edge_ai: ^2.5.0
   flutter_edge_ai_litertlm: ^1.16.0

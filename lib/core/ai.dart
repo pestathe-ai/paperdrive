@@ -193,7 +193,7 @@ String _key(String s) => normalize(s)
     .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
     .trim();
 
-T? _findByName<T extends Matchable>(Iterable<T> items, String name) {
+T? findByName<T extends Matchable>(Iterable<T> items, String name) {
   final k = _key(name);
   if (k.isEmpty) return null;
   for (final e in items) {
@@ -272,7 +272,7 @@ List<String> applyAiResult(
 
   // Categoria.
   if (r.category != null && !keepType && !_userRule(a.type(d.typeId), d)) {
-    var t = _findByName(a.activeTypes, r.category!);
+    var t = findByName(a.activeTypes, r.category!);
     if (t == null && r.category!.split(' ').length <= 3) {
       final name = r.category![0].toUpperCase() + r.category!.substring(1);
       t = NamedEntity(name: name, algorithm: MatchAlgorithm.auto);
@@ -286,7 +286,7 @@ List<String> applyAiResult(
 
   // Mittente.
   if (r.sender != null && !keepSender && !_userRule(a.correspondent(d.correspondentId), d)) {
-    var c = _findByName(a.activeCorrespondents, r.sender!);
+    var c = findByName(a.activeCorrespondents, r.sender!);
     if (c == null) {
       c = NamedEntity(name: r.sender!, algorithm: MatchAlgorithm.auto);
       a.correspondents[c.id] = c;
@@ -310,7 +310,7 @@ List<String> applyAiResult(
 
   // Tag esistenti (mai crearne di nuovi).
   for (final name in r.tags) {
-    final t = _findByName(a.activeTags.where((t) => !t.isInbox), name);
+    final t = findByName(a.activeTags.where((t) => !t.isInbox), name);
     if (t != null && d.tagIds.add(t.id)) changed.add('tag');
   }
 

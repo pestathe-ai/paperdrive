@@ -21,6 +21,9 @@ class Settings {
   String? aiModel;
   bool aiEnabled = false;
 
+  /// Importa da sola la cartella "Da importare" su Drive all'apertura.
+  bool autoImport = false;
+
   /// Cartella Drive dell'archivio (la mia o una condivisa con me).
   String? driveFolderId;
   String? driveFolderOwner;
@@ -47,6 +50,7 @@ class Settings {
         'lastErr': lastSyncError,
         'aiModel': aiModel,
         'ai': aiEnabled,
+        'autoImport': autoImport,
       };
 
   static Settings fromJson(Map<String, dynamic> j) => Settings()
@@ -64,7 +68,8 @@ class Settings {
     ..lastSync = (j['lastSync'] as num?)?.toInt()
     ..lastSyncError = j['lastErr'] as String?
     ..aiModel = j['aiModel'] as String?
-    ..aiEnabled = j['ai'] as bool? ?? false;
+    ..aiEnabled = j['ai'] as bool? ?? false
+    ..autoImport = j['autoImport'] as bool? ?? false;
 }
 
 /// File sul telefono: indice, impostazioni, PDF e anteprime.

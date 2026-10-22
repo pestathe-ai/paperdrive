@@ -4,12 +4,14 @@ import 'dart:isolate';
 
 import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
 import 'package:material_ui/material_ui.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/ai.dart';
 import '../core/archive.dart';
 import '../core/classifier.dart';
 import '../core/dates.dart';
 import '../core/extract.dart' show detectIssuer;
+import '../core/import_hint.dart';
 import '../core/mail_rules.dart';
 import '../core/matching.dart';
 import '../core/models.dart';
@@ -55,6 +57,10 @@ class AppState extends ChangeNotifier {
 
   /// Modello linguistico sul telefono (facoltativo).
   final AiAssistant ai = AiAssistant();
+
+  /// Importazione dalla cartella "Da importare" su Drive.
+  bool importing = false;
+  bool _stopImport = false;
 
   /// Il modello da usare all'importazione, se attivato e scaricato.
   AiModelOption? get aiModel => settings.aiEnabled ? aiModelById(settings.aiModel) : null;
@@ -153,6 +159,10 @@ class AppState extends ChangeNotifier {
     if (mail.checkOnOpen && mail.rules.any((r) => r.enabled) && !readOnly) {
       await checkMail(silent: true);
     }
+    if (settings.driveEnabled && settings.autoImport && !readOnly) {
+      final msg = await importDriveInbox();
+      if (!msg.contains('vuota')) shareResults.value = [msg];
+    }
   }
 
   /// Archivio condiviso in sola lettura: niente modifiche.
@@ -214,7 +224,12 @@ class AppState extends ChangeNotifier {
   }
 
   /// Divide con i codici a barre (se attivo) e importa ogni parte.
-  Future<List<IngestResult>> _ingestSplitting(StagedInput input, {String prefix = '', MailItem? mailItem}) async {
+  Future<List<IngestResult>> _ingestSplitting(
+    StagedInput input, {
+    String prefix = '',
+    MailItem? mailItem,
+    List<String>? folders,
+  }) async {
     final c = archive.config;
     var parts = <(StagedInput, int?)>[(input, null)];
     try {
@@ -234,7 +249,7 @@ class AppState extends ChangeNotifier {
     }
     final out = <IngestResult>[];
     for (final (part, asn) in parts) {
-      out.add(await _ingestOne(part, prefix: prefix, mailItem: mailItem, asn: asn));
+      out.add(await _ingestOne(part, prefix: prefix, mailItem: mailItem, asn: asn, folders: folders));
     }
     return out;
   }
@@ -267,6 +282,7 @@ class AppState extends ChangeNotifier {
     MailItem? mailItem,
     int? asn,
     bool checkDuplicates = true,
+    List<String>? folders,
   }) async {
     busy = '$prefix${input.originalName}: analisi…';
     notifyListeners();
@@ -291,7 +307,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
         aiResult = await ai.analyze(model, buildAiPrompt(archive, doc));
       }
-      _prepare(doc, mailItem: mailItem, asn: asn, ai: aiResult);
+      _prepare(doc, mailItem: mailItem, asn: asn, ai: aiResult, folders: folders);
       if (analysis.ocrPages.isNotEmpty && settings.makeArchive) {
         busy = '${prefix}Creazione della versione PDF/A…';
         notifyListeners();
@@ -328,14 +344,17 @@ class AppState extends ChangeNotifier {
     return c;
   }
 
-  void _prepare(Document doc, {MailItem? mailItem, int? asn, AiResult? ai}) {
+  void _prepare(Document doc, {MailItem? mailItem, int? asn, AiResult? ai, List<String>? folders}) {
     if (doc.source == DocSource.scan) {
       doc.title = suggestTitle(doc.content) ?? doc.originalName;
     }
     final date = detectDate(doc.content);
     if (date != null) doc.created = date;
-    for (final t in archive.inboxTags) {
-      doc.tagIds.add(t.id);
+    // I documenti già ordinati a mano non sono "da esaminare".
+    if (folders == null) {
+      for (final t in archive.inboxTags) {
+        doc.tagIds.add(t.id);
+      }
     }
     if (mailItem != null) {
       final rule = mailItem.rule;
@@ -369,13 +388,15 @@ class AppState extends ChangeNotifier {
     final title = autoTitle(archive, doc);
     if (title != null) doc.title = title;
     if (ai?.title != null && aiMayRetitle(archive, doc)) doc.title = ai!.title!;
+    if (folders != null) applyFolderHint(archive, doc, folders);
     if (asn != null) {
       doc.asn = asn;
     } else if (settings.autoAsn) {
       doc.asn = archive.nextAsn();
     }
     final flows = applyWorkflows(archive, doc, WorkflowTrigger.added, source: doc.source);
-    doc.log('Aggiunto (${doc.source.label})${ai != null ? ', letto dall\'AI' : ''}'
+    doc.log('Aggiunto (${folders != null ? 'cartella "$inboxFolderName"${folders.isEmpty ? '' : ' / ${folders.join(' / ')}'}' : doc.source.label})'
+        '${ai != null ? ', letto dall\'AI' : ''}'
         '${flows.isEmpty ? '' : ', flussi: ${flows.join(', ')}'}');
     doc.touch();
   }
@@ -590,6 +611,91 @@ class AppState extends ChangeNotifier {
     }
     if (n > 0) changed();
     return n;
+  }
+
+  /// File in attesa nella cartella "Da importare" (la crea se manca).
+  Future<List<InboxFile>> driveInbox() => drive.listInbox(folderId: _folder);
+
+  void stopImport() {
+    _stopImport = true;
+    notifyListeners();
+  }
+
+  /// Importa tutti i file della cartella "Da importare" su Drive, come la
+  /// cartella di importazione di Paperless. Le sottocartelle diventano
+  /// categoria, tag e anno; i file importati vanno nel cestino di Drive.
+  Future<String> importDriveInbox() async {
+    if (!settings.driveEnabled) return 'Collega prima Google Drive';
+    if (readOnly) return 'Archivio in sola lettura';
+    if (importing || busy != null) return 'C\'è già un\'importazione in corso';
+    importing = true;
+    _stopImport = false;
+    busy = 'Cerco i file in "$inboxFolderName"…';
+    notifyListeners();
+    var done = 0, dup = 0, failed = 0, skipped = 0, total = 0;
+    try {
+      await WakelockPlus.enable();
+    } catch (_) {}
+    try {
+      final files = await drive.listInbox(folderId: _folder);
+      total = files.length;
+      if (files.isEmpty) return 'La cartella "$inboxFolderName" è vuota';
+      await retrain();
+      for (var i = 0; i < files.length && !_stopImport; i++) {
+        final f = files[i];
+        final prefix = '(${i + 1}/${files.length}) ';
+        if (!importableFile(f.name)) {
+          skipped++;
+          continue;
+        }
+        busy = '$prefix${f.name}: download…';
+        notifyListeners();
+        try {
+          final bytes = await drive.downloadInboxFile(f.id);
+          final staged = await ingestor.stageFile(f.name, bytes);
+          final results = await _ingestSplitting(staged, prefix: prefix, folders: f.folders);
+          if (results.every((r) => r.ok)) {
+            await drive.trashInboxFile(f.id);
+            if (results.any((r) => r.doc != null)) {
+              done++;
+            } else {
+              dup++;
+            }
+          } else {
+            failed++;
+          }
+        } catch (_) {
+          failed++;
+        } finally {
+          await storage.clearTmp();
+        }
+      }
+      if (!_stopImport) {
+        try {
+          await drive.cleanInbox(folderId: _folder);
+        } catch (_) {}
+      }
+    } on DriveAuthRequired {
+      return 'Accesso a Drive scaduto: ricollega da Impostazioni';
+    } catch (e) {
+      return 'Errore: $e';
+    } finally {
+      importing = false;
+      busy = null;
+      try {
+        await WakelockPlus.disable();
+      } catch (_) {}
+      unawaited(ai.release());
+      notifyListeners();
+    }
+    final parts = <String>[
+      '$done importati',
+      if (dup > 0) '$dup già presenti',
+      if (skipped > 0) '$skipped saltati (formato non supportato)',
+      if (failed > 0) '$failed non riusciti (restano nella cartella)',
+      if (_stopImport) 'interrotto: ${total - done - dup - skipped - failed} ancora da importare',
+    ];
+    return parts.join(' · ');
   }
 
   /// Fa rileggere il documento all'AI e applica categoria, mittente, data e
