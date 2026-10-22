@@ -1,7 +1,7 @@
 name: paperdrive
 description: Archivio documenti in stile Paperless-ngx, con OCR sul telefono e sincronizzazione su Google Drive.
 publish_to: 'none'
-version: 0.9.1+13
+version: 0.9.2+14
 
 environment:
   sdk: ^3.13.0
@@ -47,3 +47,16 @@ flutter:
     - assets/Lato-Regular.ttf
     - assets/sRGB2014.icc
     - assets/logo.png
+  # Sora (Google Fonts, licenza OFL): il carattere di Dom Studio.
+  fonts:
+    - family: Sora
+      fonts:
+        - asset: assets/fonts/Sora-Regular.ttf
+        - asset: assets/fonts/Sora-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Sora-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Sora-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Sora-ExtraBold.ttf
+          weight: 800

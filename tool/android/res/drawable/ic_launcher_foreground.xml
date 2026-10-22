@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- D. Paper Lab: la casa-documento Dom Studio con la cartella al centro. Griglia 108×108. -->
+<!-- D. Paper Lab: la casa-documento Dom Studio con tre cartelle in ordine
+     (linguette a indice). Griglia 108×108. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
@@ -7,8 +8,16 @@
         android:pathData="M31 40 L54 24 L77 40 L77 82 Q77 85 74 85 L34 85 Q31 85 31 82 Z"/>
     <path android:fillColor="#F28C38"
         android:pathData="M54 24 L77 40 L60 40 Q54 40 54 34 Z"/>
-    <path android:fillColor="#1D3A8A" android:fillType="evenOdd"
-        android:pathData="M39 52.5 Q39 50 41.5 50 L48.5 50 L51.5 53 L61.5 53 Q64 53 64 55.5 L64 67.5 Q64 70 61.5 70 L41.5 70 Q39 70 39 67.5 Z M43 59.5 L60 59.5 L60 62.5 L43 62.5 Z"/>
+    <path android:fillColor="#1D3A8A"
+        android:pathData="M39 50 Q39 48 41 48 L47 48 L49 50.5 L64 50.5 Q66 50.5 66 52.5 L66 72 L39 72 Z"/>
+    <path android:fillColor="#1D3A8A" android:strokeColor="#FFF8F0"
+        android:strokeWidth="1.6" android:strokeLineJoin="round"
+        android:pathData="M39 56 L48 56 L50 53.5 L56 53.5 L58 56 L66 56 L66 72 L39 72 Z"/>
+    <path android:fillColor="#1D3A8A" android:strokeColor="#FFF8F0"
+        android:strokeWidth="1.6" android:strokeLineJoin="round"
+        android:pathData="M39 61.5 L57 61.5 L59 59 L64 59 Q66 59 66 61 L66 70.5 Q66 72.5 64 72.5 L41 72.5 Q39 72.5 39 70.5 Z"/>
     <path android:fillColor="#F28C38"
-        android:pathData="M66.4 73 A3.6 3.6 0 1 0 73.6 73 A3.6 3.6 0 1 0 66.4 73 Z"/>
+        android:pathData="M45.2 66 L52.8 66 A1.2 1.2 0 0 1 52.8 68.4 L45.2 68.4 A1.2 1.2 0 0 1 45.2 66 Z"/>
+    <path android:fillColor="#F28C38"
+        android:pathData="M66.4 76 A3.6 3.6 0 1 0 73.6 76 A3.6 3.6 0 1 0 66.4 76 Z"/>
 </vector>
