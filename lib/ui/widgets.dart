@@ -370,3 +370,53 @@ class EmptyState extends StatelessWidget {
 
 /// Esiste il file? (usato per decidere se mostrare l'anteprima).
 bool fileExists(File f) => f.existsSync();
+
+/// Colori Dom Studio usati dal marchio.
+const Color brandBlue = Color(0xFF1D3A8A);
+const Color brandOrange = Color(0xFFF28C38);
+const Color brandRed = Color(0xFFD7263D);
+
+/// Il nome dell'app come marchio: la casa dell'icona, "D" con il punto
+/// arancio come il tetto, "Paper Lab" in Sora 800.
+class BrandTitle extends StatelessWidget {
+  const BrandTitle({super.key, this.color = Colors.white, this.size = 22, this.logo = true});
+
+  final Color color;
+  final double size;
+  final bool logo;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontFamily: 'Sora',
+      fontWeight: FontWeight.w800,
+      fontSize: size,
+      letterSpacing: -0.5,
+      color: color,
+      height: 1.1,
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (logo) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(size * 0.45),
+            child: Image.asset('assets/logo.png', width: size * 2.1, height: size * 2.1),
+          ),
+          SizedBox(width: size * 0.3),
+        ],
+        Flexible(
+          child: Text.rich(
+            TextSpan(children: [
+              TextSpan(text: 'D', style: style),
+              TextSpan(text: '.', style: style.copyWith(color: brandOrange)),
+              TextSpan(text: ' Paper Lab', style: style),
+            ]),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}

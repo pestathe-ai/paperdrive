@@ -276,7 +276,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               )
             : AppBar(
-                title: const Text('D. Paper Lab'),
+                backgroundColor: brandBlue,
+                foregroundColor: Colors.white,
+                titleSpacing: 4,
+                title: const BrandTitle(),
+                // Il tetto arancio dell'icona, come filo sotto la barra.
+                bottom: const PreferredSize(
+                  preferredSize: Size.fromHeight(3),
+                  child: ColoredBox(color: brandOrange, child: SizedBox(height: 3, width: double.infinity)),
+                ),
                 actions: [
                   IconButton(
                     tooltip: 'Sincronizza',
@@ -527,29 +535,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.asset('assets/logo.png', width: 48, height: 48),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'D. Paper Lab',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            Text('un\'app Dom Studio', style: Theme.of(context).textTheme.bodySmall),
-                          ],
-                        ),
-                      ),
-                    ],
+                  BrandTitle(color: Theme.of(context).colorScheme.primary, size: 22),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 53, top: 2),
+                    child: Text('un\'app Dom Studio', style: Theme.of(context).textTheme.bodySmall),
                   ),
                   const SizedBox(height: 12),
                   Text('$total documenti'
