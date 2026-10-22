@@ -3,5 +3,5 @@
 <path d="M39 56 L48 56 L50 53.5 L56 53.5 L58 56 L66 56 L66 72 L39 72 Z" fill="#1D3A8A" stroke="#FFF8F0" stroke-width="1.6" stroke-linejoin="round"/>
 <path d="M39 61.5 L57 61.5 L59 59 L64 59 Q66 59 66 61 L66 70.5 Q66 72.5 64 72.5 L41 72.5 Q39 72.5 39 70.5 Z" fill="#1D3A8A" stroke="#FFF8F0" stroke-width="1.6" stroke-linejoin="round"/>
 <rect x="44" y="66" width="10" height="2.4" rx="1.2" fill="#F28C38"/>
-<path d="M57.5 44.5 L64 44.5 L64 66 L60.75 62.6 L57.5 66 Z" fill="#D7263D" stroke="#FFF8F0" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M34 29 L40 29 L40 47 L37 44 L34 47 Z" fill="#D7263D"/>
 <circle cx="70" cy="76" r="3.6" fill="#F28C38"/></svg>
