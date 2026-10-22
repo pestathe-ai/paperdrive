@@ -7,6 +7,7 @@ import 'archive.dart';
 import 'extract.dart';
 import 'matching.dart';
 import 'models.dart';
+import 'people.dart' show healthKindFieldId, monthFolder, personFolder, specialtyFieldId;
 
 enum WorkflowTrigger { added, updated }
 
@@ -251,6 +252,10 @@ const Map<String, String> titlePlaceholders = {
   '{kind}': 'cosa è nello specifico (Bonifico, Visura catastale…)',
   '{details}': 'beneficiario, numero o comune',
   '{amount}': 'importo',
+  '{persona}': 'persona della famiglia (vuoto per bollette e casa)',
+  '{specialita}': 'specialità medica',
+  '{tipo_sanitario}': 'Referti, Prescrizioni o Altro',
+  '{mese}': 'mese per cartelle (03 Marzo)',
 };
 
 /// Valori dei segnaposti per un documento. Con [facts] legge anche dal
@@ -283,6 +288,10 @@ Map<String, String> placeholderValues(Archive a, Document d, {bool facts = false
     '{filename}': name,
     '{owner_username}': d.owner ?? '',
     '{doc_title}': d.title,
+    '{persona}': personFolder(a, d),
+    '{specialita}': d.customFields[specialtyFieldId] ?? '',
+    '{tipo_sanitario}': d.customFields[healthKindFieldId] ?? '',
+    '{mese}': monthFolder(d.created),
     if (f != null) '{kind}': f.label ?? a.type(d.typeId)?.name ?? '',
     if (f != null) '{details}': f.details,
     if (f != null) '{amount}': f.amountUseful ? f.amount! : '',

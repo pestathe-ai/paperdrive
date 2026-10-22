@@ -42,7 +42,7 @@ const Map<String, FileKind> _byExt = {
 };
 
 /// Le estensioni importabili (per il selettore dei file).
-List<String> get importableExtensions => _byExt.keys.toList();
+List<String> get pickerExtensions => _byExt.keys.toList();
 
 String fileExtension(String name) {
   final dot = name.lastIndexOf('.');

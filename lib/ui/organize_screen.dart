@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/models.dart';
 import '../core/organize.dart';
+import '../core/people.dart' show Person;
 import '../core/workflows.dart' show titlePlaceholders;
 import '../state/app_state.dart';
 import 'widgets.dart';
@@ -49,6 +50,55 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
       ..separatorBarcode = sep.text.trim()
       ..asnPrefix = asn.text.trim();
     if (c.toJson().toString() != before) app.saveConfig();
+  }
+
+  Future<void> _editPerson(Person? person) async {
+    final name = TextEditingController(text: person?.name ?? '');
+    final aka = TextEditingController(text: person?.aliases.join(', ') ?? '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(person == null ? 'Nuova persona' : 'Modifica persona'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: name,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Nome della cartella', hintText: 'Maria'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: aka,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Come compare nei documenti',
+                hintText: 'Maria Rossi, RSSMRA80A41F205X',
+                helperText: 'Nome e cognome, codice fiscale… separati da virgole',
+                helperMaxLines: 2,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Annulla')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Salva')),
+        ],
+      ),
+    );
+    if (ok != true || name.text.trim().isEmpty) return;
+    final aliases = aka.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final c = app.archive.config;
+    if (person == null) {
+      c.people.add(Person(name: name.text.trim(), aliases: aliases));
+    } else {
+      person
+        ..name = name.text.trim()
+        ..aliases = aliases;
+    }
+    app.saveConfig();
+    if (mounted) setState(() {});
   }
 
   Widget _chips(TextEditingController ctrl, {bool slash = false}) => Padding(
@@ -124,6 +174,77 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
                 },
                 child: const Text('Aggiungi predefinite'),
               ),
+            ),
+            const Divider(height: 32),
+            Text('Persone', style: theme.textTheme.titleMedium),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Text(
+                'I documenti di ogni persona vanno nella sua cartella (es. Lavoro/Maria/2026). '
+                'La sanità è divisa anche per specialità, referti e prescrizioni, anno e mese: '
+                'Sanità/Maria/Cardiologia/Referti/2026/03 Marzo.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            for (final (i, person) in c.people.indexed)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.person_outline),
+                title: Text(person.name),
+                subtitle: person.aliases.isEmpty ? null : Text(person.aliases.join(', ')),
+                trailing: IconButton(
+                  tooltip: 'Togli',
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    c.people.removeAt(i);
+                    app.saveConfig();
+                    setState(() {});
+                  },
+                ),
+                onTap: () => _editPerson(person),
+              ),
+            Row(
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.person_add_alt),
+                  label: const Text('Aggiungi persona'),
+                  onPressed: () => _editPerson(null),
+                ),
+                const Spacer(),
+                if (c.people.isNotEmpty)
+                  TextButton(
+                    onPressed: app.readOnly
+                        ? null
+                        : () {
+                            final n = app.reapplyPeople();
+                            showMessage(context, n == 0 ? 'Nessun documento da aggiornare' : 'Aggiornati $n documenti');
+                          },
+                    child: const Text('Applica ai documenti'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('Categorie comuni a tutta la casa (senza cartella per persona)', style: theme.textTheme.bodySmall),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final t in app.archive.activeTypes)
+                  FilterChip(
+                    label: Text(t.name),
+                    selected: c.sharedTypeIds.contains(t.id),
+                    onSelected: (v) {
+                      if (v) {
+                        c.sharedTypeIds.add(t.id);
+                      } else {
+                        c.sharedTypeIds.remove(t.id);
+                      }
+                      app.saveConfig();
+                      setState(() {});
+                    },
+                  ),
+              ],
             ),
             const Divider(height: 32),
             Text('Apprendimento automatico', style: theme.textTheme.titleMedium),

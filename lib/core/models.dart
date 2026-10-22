@@ -6,6 +6,7 @@ library;
 import 'dart:math';
 
 import 'text_utils.dart';
+import 'people.dart' show Person, defaultSharedTypeIds;
 
 final Random _rnd = Random.secure();
 
@@ -716,10 +717,15 @@ class ArchiveConfig {
     this.separatorBarcode = 'PATCHT',
     this.asnBarcode = true,
     this.asnPrefix = 'ASN',
+    List<Person>? people,
+    Set<String>? sharedTypeIds,
     int? modified,
-  }) : modified = modified ?? 0;
+  })  : people = people ?? <Person>[],
+        sharedTypeIds = sharedTypeIds ?? {...defaultSharedTypeIds},
+        modified = modified ?? 0;
 
-  static const String defaultPathTemplate = '{document_type}/{created_year}/{created} {title}';
+  static const String defaultPathTemplate = '{document_type}/{persona}/{created_year}/{created} {title}';
+  static const String oldPathTemplate = '{document_type}/{created_year}/{created} {title}';
   static const String defaultTitleTemplate = '{kind} {details} {amount} - {correspondent}';
   static const String oldTitleTemplate =
       '{document_type} {correspondent} {created_month}-{created_year}';
@@ -744,6 +750,12 @@ class ArchiveConfig {
   /// Legge l'ASN da un'etichetta con codice a barre (es. ASN00123).
   bool asnBarcode;
   String asnPrefix;
+
+  /// Persone della famiglia: i loro documenti vanno in cartelle separate.
+  List<Person> people;
+
+  /// Categorie comuni a tutta la casa: senza cartella per persona.
+  Set<String> sharedTypeIds;
   int modified;
 
   Map<String, dynamic> toJson() => {
@@ -756,11 +768,16 @@ class ArchiveConfig {
         'sep': separatorBarcode,
         'asnBc': asnBarcode,
         'asnPre': asnPrefix,
+        if (people.isNotEmpty) 'people': people.map((p) => p.toJson()).toList(),
+        'shared': sharedTypeIds.toList(),
         'mod': modified,
       };
 
   factory ArchiveConfig.fromJson(Map<String, dynamic> j) => ArchiveConfig(
-        pathTemplate: j['path'] as String? ?? defaultPathTemplate,
+        pathTemplate: switch (j['path'] as String?) {
+          null || oldPathTemplate => defaultPathTemplate,
+          final t => t,
+        },
         titleTemplate: switch (j['title'] as String?) {
           null || oldTitleTemplate => defaultTitleTemplate,
           final t => t,
@@ -772,6 +789,10 @@ class ArchiveConfig {
         separatorBarcode: j['sep'] as String? ?? 'PATCHT',
         asnBarcode: j['asnBc'] as bool? ?? true,
         asnPrefix: j['asnPre'] as String? ?? 'ASN',
+        people: ((j['people'] as List?) ?? const [])
+            .map((e) => Person.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(),
+        sharedTypeIds: j['shared'] == null ? null : (j['shared'] as List).map((e) => '$e').toSet(),
         modified: (j['mod'] as num?)?.toInt() ?? 0,
       );
 }

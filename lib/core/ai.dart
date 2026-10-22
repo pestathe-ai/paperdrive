@@ -25,6 +25,9 @@ class AiResult {
     this.date,
     this.amount,
     this.tags = const [],
+    this.person,
+    this.specialty,
+    this.healthKind,
   });
 
   final String? category;
@@ -34,6 +37,13 @@ class AiResult {
   final DateTime? date;
   final String? amount;
   final List<String> tags;
+
+  /// A chi è intestato (una delle persone della famiglia).
+  final String? person;
+
+  /// Per i documenti sanitari: specialità e referto/prescrizione.
+  final String? specialty;
+  final String? healthKind;
 
   bool get isEmpty =>
       category == null && kind == null && title == null && sender == null && date == null;
@@ -73,11 +83,16 @@ String buildAiPrompt(Archive a, Document d, {int maxChars = 5000}) {
     ..writeln('"mittente": chi ha emesso o inviato il documento (azienda, ente o persona), nome breve, oppure null;')
     ..writeln('"data": data del documento in formato AAAA-MM-GG (emissione, non scadenza né date di nascita o di leggi), oppure null;')
     ..writeln('"importo": importo totale con la virgola (es. "123,45"), oppure null;')
-    ..writeln('"tag": lista di tag esistenti adatti (anche vuota).')
+    ..writeln('"tag": lista di tag esistenti adatti (anche vuota);')
+    ..writeln('"persona": a chi è intestato o chi riguarda (paziente, intestatario), scelto tra le persone della famiglia, oppure null;')
+    ..writeln('"specialita": solo per documenti sanitari, la specialità medica (es. "Cardiologia", "Analisi di laboratorio", "Dentista"), altrimenti null;')
+    ..writeln('"tipo_sanitario": solo per documenti sanitari, "Referto", "Prescrizione" o "Altro", altrimenti null.')
     ..writeln()
     ..writeln('Categorie esistenti: ${cats.isEmpty ? '(nessuna)' : cats.join(', ')}');
   if (senders.isNotEmpty) b.writeln('Mittenti già in archivio: ${senders.join(', ')}');
   if (tags.isNotEmpty) b.writeln('Tag esistenti: ${tags.join(', ')}');
+  final people = a.config.people.map((p) => p.aliases.isEmpty ? p.name : '${p.name} (${p.aliases.where((x) => !RegExp(r'\d').hasMatch(x)).join(', ')})').toList();
+  if (people.isNotEmpty) b.writeln('Persone della famiglia: ${people.join('; ')}');
   b
     ..writeln('Nome del file: ${d.originalName}')
     ..writeln()
@@ -182,6 +197,9 @@ AiResult? parseAiResponse(String raw, {DateTime? now}) {
     date: _date(pick(['data', 'date']), now: now),
     amount: amount != null && RegExp(r'\d').hasMatch(amount) ? amount : null,
     tags: tags,
+    person: _str(pick(['persona', 'person', 'intestatario', 'paziente']), max: 60),
+    specialty: _str(pick(['specialita', 'specialty', 'specializzazione']), max: 40),
+    healthKind: _str(pick(['tiposanitario', 'healthkind', 'tipodocumentosanitario']), max: 30),
   );
   return r.isEmpty ? null : r;
 }

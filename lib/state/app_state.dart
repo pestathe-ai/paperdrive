@@ -19,6 +19,7 @@ import '../core/mail_rules.dart';
 import '../core/matching.dart';
 import '../core/models.dart';
 import '../core/organize.dart';
+import '../core/people.dart';
 import '../core/starter.dart';
 import '../core/search.dart';
 import '../core/sync_merge.dart';
@@ -96,6 +97,7 @@ class AppState extends ChangeNotifier {
     // e le regole predefinite non modificate si aggiornano.
     if (archive.activeTypes.isEmpty || archive.types.keys.any((k) => k.startsWith('st-'))) {
       addStarterEntities(archive);
+      ensurePeopleEntities(archive);
       await storage.saveArchive(archive);
     }
     await storage.clearTmp();
@@ -214,7 +216,7 @@ class AppState extends ChangeNotifier {
   Future<List<String>> importFiles() async {
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: importableExtensions,
+      allowedExtensions: pickerExtensions,
     );
     if (files.isEmpty) return const [];
     final staged = <StagedInput>[];
@@ -458,6 +460,7 @@ class AppState extends ChangeNotifier {
     if (title != null) doc.title = title;
     if (ai?.title != null && aiMayRetitle(archive, doc)) doc.title = ai!.title!;
     if (folders != null) applyFolderHint(archive, doc, folders);
+    applyPeople(archive, doc, aiPerson: ai?.person, aiSpecialty: ai?.specialty, aiHealthKind: ai?.healthKind);
     if (asn != null) {
       doc.asn = asn;
     } else if (settings.autoAsn) {
@@ -668,6 +671,7 @@ class AppState extends ChangeNotifier {
       final before = d.toJson();
       applyMatches(archive, d, overwrite: overwrite, classifier: classifier);
       applyKindCategory(archive, d);
+      applyPeople(archive, d);
       if (retitle) _guessCorrespondent(d);
       if (retitle) {
         final t = autoTitle(archive, d);
@@ -782,6 +786,9 @@ class AppState extends ChangeNotifier {
       if (r == null) return null;
       final before = d.toJson();
       final fields = applyAiResult(archive, d, r, retitle: false);
+      if (applyPeople(archive, d, aiPerson: r.person, aiSpecialty: r.specialty, aiHealthKind: r.healthKind)) {
+        fields.add('persona');
+      }
       // Chiesto esplicitamente: il titolo dell'AI, se non l'hai scritto tu.
       if (r.title != null && !d.titleEdited && r.title != d.title) {
         d.title = r.title!;
@@ -797,6 +804,22 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       unawaited(ai.release());
     }
+  }
+
+  /// Riassegna persona, specialità e tipo sanitario a tutti i documenti
+  /// (dopo aver cambiato l'elenco delle persone). Non tocca i valori messi a
+  /// mano. Restituisce quanti documenti cambiano.
+  int reapplyPeople() {
+    var n = 0;
+    for (final d in archive.activeDocuments) {
+      final before = d.toJson();
+      if (applyPeople(archive, d) && logChanges(archive, before, d, via: 'Persone')) {
+        d.touch();
+        n++;
+      }
+    }
+    changed(entities: true);
+    return n;
   }
 
   /// Aggiunge le categorie predefinite che mancano.
