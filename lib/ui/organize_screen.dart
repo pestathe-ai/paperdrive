@@ -10,7 +10,10 @@ import 'widgets.dart';
 /// Archiviazione automatica: titolo, cartelle su Drive, categorie,
 /// codici a barre.
 class OrganizeScreen extends StatefulWidget {
-  const OrganizeScreen({super.key});
+  const OrganizeScreen({super.key, this.showPeople = false});
+
+  /// Apre la schermata già sulla sezione "Persone".
+  final bool showPeople;
 
   @override
   State<OrganizeScreen> createState() => _OrganizeScreenState();
@@ -22,6 +25,19 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
   late final path = TextEditingController(text: app.archive.config.pathTemplate);
   late final sep = TextEditingController(text: app.archive.config.separatorBarcode);
   late final asn = TextEditingController(text: app.archive.config.asnPrefix);
+
+  final GlobalKey _peopleKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.showPeople) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _peopleKey.currentContext;
+        if (ctx != null) Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 300));
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -176,7 +192,7 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
               ),
             ),
             const Divider(height: 32),
-            Text('Persone', style: theme.textTheme.titleMedium),
+            Text('Persone', key: _peopleKey, style: theme.textTheme.titleMedium),
             Padding(
               padding: const EdgeInsets.only(top: 4, bottom: 4),
               child: Text(

@@ -566,6 +566,12 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () => go(const ManageScreen(initialTab: 3)),
             ),
             ListTile(
+              leading: const Icon(Icons.people_outline),
+              title: const Text('Persone della famiglia'),
+              trailing: app.archive.config.people.isEmpty ? null : Text('${app.archive.config.people.length}'),
+              onTap: () => go(const OrganizeScreen(showPeople: true)),
+            ),
+            ListTile(
               leading: const Icon(Icons.auto_awesome_outlined),
               title: const Text('Archiviazione automatica'),
               onTap: () => go(const OrganizeScreen()),
