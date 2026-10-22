@@ -364,6 +364,12 @@ class DriveSync {
       rethrow;
     }
     final canWrite = info.capabilities?.canEdit ?? true;
+    // La cartella "Da importare" c'è sempre, così si vede subito su Drive.
+    if (canWrite) {
+      try {
+        await _folderFor(api, root, [inboxFolderName]);
+      } catch (_) {}
+    }
     final owners = info.owners ?? const <drive.User>[];
     final ownerEmail = owners.isEmpty ? null : owners.first.emailAddress;
 
