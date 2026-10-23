@@ -10,6 +10,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/ai.dart';
 import '../core/archive.dart';
+import '../core/assistant.dart';
 import '../core/classifier.dart';
 import '../core/dates.dart';
 import '../core/extract.dart' show detectIssuer;
@@ -804,6 +805,47 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       unawaited(ai.release());
     }
+  }
+
+  /// Assistente "Chiedi": capisce la domanda (regole + AI sul telefono, se
+  /// scaricata), cerca e prepara la risposta.
+  Future<(AskQuery, List<AskHit>, String)> ask(String question, {bool useAi = true}) async {
+    var q = parseQuestion(archive, question);
+    final model = aiModelById(settings.aiModel);
+    if (useAi && model != null) {
+      final raw = await ai.generate(model, buildAskPrompt(archive, question), maxOutputTokens: 160);
+      if (raw != null) q = mergeAskResponse(archive, q, raw);
+    }
+    final hits = runAsk(archive, q, searchIndex);
+    return (q, hits, answerText(archive, q, hits));
+  }
+
+  /// Domande aperte: documenti su cui l'app ha un dubbio.
+  List<DocQuestion> get questions => openQuestions(archive);
+
+  /// Risponde a una domanda: la scelta vale come correzione a mano, così
+  /// l'app impara.
+  void answerQuestion(DocQuestion q, String value) {
+    final d = q.doc;
+    final before = d.toJson();
+    switch (q.kind) {
+      case QuestionKind.person:
+        if (value.isEmpty) {
+          // Documento di tutta la casa: la sua categoria diventa comune.
+          if (d.typeId != null) archive.config.sharedTypeIds.add(d.typeId!);
+          archive.config.modified = nowMs();
+        } else {
+          d.customFields[personFieldId] = value;
+        }
+      case QuestionKind.category:
+        d.typeId = value;
+        applyPeople(archive, d);
+        final t = autoTitle(archive, d);
+        if (t != null && !d.titleEdited) d.title = t;
+    }
+    if (logChanges(archive, before, d, via: 'Risposta')) d.userEdited = true;
+    d.touch();
+    changed(entities: true);
   }
 
   /// Riassegna persona, specialità e tipo sanitario a tutti i documenti

@@ -3,12 +3,14 @@ import 'package:material_ui/material_ui.dart';
 import '../core/models.dart';
 import '../core/search.dart' show snippet;
 import '../state/app_state.dart';
+import 'ask_screen.dart';
 import 'document_screen.dart';
 import 'drive_import_screen.dart';
 import 'filter_sheet.dart';
 import 'mail_screen.dart';
 import 'manage_screen.dart';
 import 'organize_screen.dart';
+import 'questions_screen.dart';
 import 'settings_screen.dart';
 import 'sharing_screen.dart';
 import 'trash_screen.dart';
@@ -287,6 +289,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 actions: [
                   IconButton(
+                    tooltip: 'Chiedi',
+                    icon: const Icon(Icons.auto_awesome),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AskScreen()),
+                    ),
+                  ),
+                  IconButton(
                     tooltip: 'Sincronizza',
                     onPressed: app.syncing ? null : sync,
                     icon: app.syncing
@@ -320,6 +330,23 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
         body: Column(
           children: [
+            if (!app.readOnly && app.questions.isNotEmpty)
+              Material(
+                color: brandOrange.withValues(alpha: 0.15),
+                child: ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.help_outline, color: brandOrange),
+                  title: Text(app.questions.length == 1
+                      ? 'Ho un dubbio su 1 documento'
+                      : 'Ho un dubbio su ${app.questions.length} documenti'),
+                  subtitle: const Text('Rispondi con un tocco, così imparo'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const QuestionsScreen()),
+                  ),
+                ),
+              ),
             if (app.readOnly)
               Material(
                 color: Theme.of(context).colorScheme.tertiaryContainer,
@@ -547,6 +574,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const Divider(),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome),
+              title: const Text('Chiedi'),
+              subtitle: const Text('Trova documenti con una domanda'),
+              onTap: () => go(const AskScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.help_outline),
+              title: const Text('Domande per te'),
+              trailing: app.questions.isEmpty ? null : Text('${app.questions.length}'),
+              onTap: () => go(const QuestionsScreen()),
+            ),
             ListTile(
               leading: const Icon(Icons.inbox_outlined),
               title: const Text('Da esaminare'),

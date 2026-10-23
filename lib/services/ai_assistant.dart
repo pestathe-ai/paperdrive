@@ -132,6 +132,31 @@ class AiAssistant extends ChangeNotifier {
     );
   }
 
+  /// Risposta libera del modello (per l'assistente "Chiedi"). Null se non
+  /// risponde. Il modello resta caricato: chiamare [release] dopo.
+  Future<String?> generate(AiModelOption m, String prompt, {int maxOutputTokens = 200}) async {
+    working = true;
+    notifyListeners();
+    InferenceModelSession? session;
+    try {
+      final model = await _ensureModel(m);
+      session = await model.createSession(temperature: 0, topK: 1, maxOutputTokens: maxOutputTokens);
+      await session.addQueryChunk(Message.text(text: prompt, isUser: true));
+      final out = await session.getResponse().timeout(const Duration(minutes: 2));
+      error = null;
+      return out;
+    } catch (e) {
+      error = '$e';
+      return null;
+    } finally {
+      try {
+        await session?.close();
+      } catch (_) {}
+      working = false;
+      notifyListeners();
+    }
+  }
+
   /// Chiede al modello di leggere il documento. Null se non risponde in
   /// modo utilizzabile.
   Future<AiResult?> analyze(AiModelOption m, String prompt) async {

@@ -21,6 +21,23 @@ Precedenza: regole scritte dall'utente e documenti simili corretti a mano > AI >
 predefinite. La data dell'AI viene usata solo se compare davvero nel testo. Dal menu di un
 documento: *Rileggi con l'AI*. Richiede Android 11+ e un telefono arm64.
 
+### Chiedi e Domande per te (v0.11)
+
+- **Chiedi** (icona ✦ in alto): domande in italiano, anche dettate col microfono della tastiera.
+  "Ultima bolletta della luce", "referto cardiologico di Maria", "quanto ho speso dal dentista nel 2025".
+  Le regole capiscono categoria, persona, specialità, mittente, anno e mese; l'AI sul telefono (se
+  scaricata) completa le domande più libere. Risponde con i documenti, il più recente, il conteggio o
+  il totale degli importi.
+- **Domande per te**: quando non riconosce la categoria o non sa di chi è un documento personale,
+  l'app chiede invece di sbagliare cartella. Ogni risposta vale come correzione e le insegna.
+
+### Persone e sanità (v0.10)
+
+In *Persone della famiglia* si inseriscono i nomi (con nome e cognome e codice fiscale). I documenti
+vanno nella cartella della persona (`Lavoro/Maria/2026`); la sanità è divisa per persona, specialità,
+referti/prescrizioni, anno e mese (`Sanità/Maria/Cardiologia/Referti/2026/03 Marzo`). Bollette e
+casa restano comuni.
+
 ### Cartella di importazione su Drive (v0.9)
 
 Come la *consume folder* di Paperless: copia i documenti (anche intere cartelle, per esempio da
