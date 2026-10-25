@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../core/assistant.dart' show DocQuestion;
 import '../core/models.dart';
+import '../core/organize.dart' show drivePath;
 import '../core/search.dart' show snippet;
 import '../state/app_state.dart';
 import 'ask_screen.dart';
@@ -29,6 +31,12 @@ class _HomeScreenState extends State<HomeScreen> {
   String? activeViewId;
   final searchCtrl = TextEditingController();
   final Set<String> selected = {};
+
+  /// Scheda: 0 Da sistemare, 1 Archivio (a cartelle), 2 Recenti.
+  int? tab;
+
+  /// Cartella aperta nell'archivio.
+  List<String> folder = const [];
 
   AppState? _app;
 
@@ -222,6 +230,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final docs = app.query(filter);
     final selecting = selected.isNotEmpty;
     final views = app.archive.activeViews.where((v) => v.showOnHome).toList();
+    final toFix = app.toReview;
+    tab ??= toFix.isEmpty ? 1 : 0;
     final filterActive = filter.tagIds.isNotEmpty ||
         filter.excludedTagIds.isNotEmpty ||
         filter.correspondentId != null ||
@@ -232,6 +242,7 @@ class _HomeScreenState extends State<HomeScreen> {
         filter.untaggedOnly ||
         filter.mineOnly;
 
+    final searching = filter.query.isNotEmpty || filterActive || activeViewId != null;
     return PopScope(
       canPop: !selecting,
       onPopInvokedWithResult: (didPop, _) {
@@ -414,56 +425,28 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-            SizedBox(
-              height: 48,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                children: [
-                  _viewChip('Tutti', activeViewId == null && filter.isEmpty,
-                      () => setFilter(DocumentFilter())),
-                  _viewChip('Da esaminare', activeViewId == null && filter.inboxOnly && filter.query.isEmpty,
-                      () => setFilter(DocumentFilter(inboxOnly: true))),
-                  for (final v in views)
-                    _viewChip(v.name, activeViewId == v.id,
-                        () => setFilter(v.filter.copy(), viewId: v.id)),
-                ],
+            if (!searching) _tabs(app, toFix.length),
+            if (searching || tab == 2)
+              SizedBox(
+                height: 48,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  children: [
+                    _viewChip('Tutti', activeViewId == null && filter.isEmpty,
+                        () => setFilter(DocumentFilter())),
+                    for (final v in views)
+                      _viewChip(v.name, activeViewId == v.id,
+                          () => setFilter(v.filter.copy(), viewId: v.id)),
+                  ],
+                ),
               ),
-            ),
             Expanded(
-              child: docs.isEmpty
-                  ? EmptyState(
-                      icon: app.archive.activeDocuments.isEmpty
-                          ? Icons.inventory_2_outlined
-                          : Icons.search_off,
-                      text: app.archive.activeDocuments.isEmpty
-                          ? 'L\'archivio è vuoto.\nScansiona o importa il primo documento.'
-                          : 'Nessun documento corrisponde.',
-                      action: app.archive.activeDocuments.isEmpty
-                          ? FilledButton.icon(
-                              onPressed: showAddSheet,
-                              icon: const Icon(Icons.add),
-                              label: const Text('Aggiungi'),
-                            )
-                          : null,
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.only(bottom: 96),
-                      itemCount: docs.length + 1,
-                      separatorBuilder: (_, _) => const Divider(height: 1, indent: 84),
-                      itemBuilder: (c, i) {
-                        if (i == 0) {
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                            child: Text(
-                              docs.length == 1 ? '1 documento' : '${docs.length} documenti',
-                              style: Theme.of(c).textTheme.labelMedium,
-                            ),
-                          );
-                        }
-                        return _docTile(app, docs[i - 1]);
-                      },
-                    ),
+              child: searching || tab == 2
+                  ? _list(app, docs)
+                  : tab == 0
+                      ? _toFix(app, toFix)
+                      : _archive(app),
             ),
           ],
         ),
@@ -509,6 +492,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       title: Text(d.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      trailing: switch (app.isOnDrive(d)) {
+        true => const Tooltip(message: 'Su Google Drive', child: Icon(Icons.cloud_done_outlined, size: 18)),
+        false => const Tooltip(
+            message: 'In attesa di caricamento su Drive',
+            child: Icon(Icons.cloud_upload_outlined, size: 18, color: brandOrange),
+          ),
+        null => null,
+      },
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -542,6 +533,173 @@ class _HomeScreenState extends State<HomeScreen> {
           MaterialPageRoute(builder: (_) => DocumentScreen(docId: d.id)),
         );
       },
+    );
+  }
+
+  Widget _tabs(AppState app, int toFix) => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+        child: SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<int>(
+            showSelectedIcon: false,
+            segments: [
+              ButtonSegment(
+                value: 0,
+                label: Badge(
+                  isLabelVisible: toFix > 0,
+                  label: Text('$toFix'),
+                  backgroundColor: brandOrange,
+                  offset: const Offset(14, -6),
+                  child: const Text('Da sistemare'),
+                ),
+              ),
+              const ButtonSegment(value: 1, label: Text('Archivio')),
+              const ButtonSegment(value: 2, label: Text('Recenti')),
+            ],
+            selected: {tab ?? 1},
+            onSelectionChanged: (v) => setState(() {
+              tab = v.first;
+              selected.clear();
+            }),
+          ),
+        ),
+      );
+
+  Widget _list(AppState app, List<Document> docs) => docs.isEmpty
+      ? EmptyState(
+          icon: app.archive.activeDocuments.isEmpty ? Icons.inventory_2_outlined : Icons.search_off,
+          text: app.archive.activeDocuments.isEmpty
+              ? 'L\'archivio è vuoto.\nScansiona o importa il primo documento.'
+              : 'Nessun documento corrisponde.',
+          action: app.archive.activeDocuments.isEmpty
+              ? FilledButton.icon(
+                  onPressed: showAddSheet,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Aggiungi'),
+                )
+              : null,
+        )
+      : ListView.separated(
+          padding: const EdgeInsets.only(bottom: 96),
+          itemCount: docs.length + 1,
+          separatorBuilder: (_, _) => const Divider(height: 1, indent: 84),
+          itemBuilder: (c, i) {
+            if (i == 0) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: Text(
+                  docs.length == 1 ? '1 documento' : '${docs.length} documenti',
+                  style: Theme.of(c).textTheme.labelMedium,
+                ),
+              );
+            }
+            return _docTile(app, docs[i - 1]);
+          },
+        );
+
+  Widget _toFix(AppState app, List<(Document, DocQuestion?)> items) {
+    if (items.isEmpty) {
+      return const EmptyState(
+        icon: Icons.task_alt,
+        text: 'Tutto sistemato.\nI nuovi documenti compaiono qui finché non li confermi.',
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                items.length == 1 ? '1 documento da controllare' : '${items.length} documenti da controllare',
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+            ),
+            if (!app.readOnly && items.any((e) => e.$2 == null))
+              TextButton(
+                onPressed: () => app.markReviewed([for (final e in items) if (e.$2 == null) e.$1]),
+                child: const Text('Conferma tutti'),
+              ),
+          ],
+        ),
+        for (final (d, q) in items) ReviewCard(doc: d, question: q),
+      ],
+    );
+  }
+
+  Widget _archive(AppState app) {
+    final a = app.archive;
+    final subfolders = <String, int>{};
+    final here = <Document>[];
+    for (final d in a.activeDocuments) {
+      final (f, _) = drivePath(a, d);
+      if (f.length < folder.length) continue;
+      var match = true;
+      for (var i = 0; i < folder.length; i++) {
+        if (f[i] != folder[i]) {
+          match = false;
+          break;
+        }
+      }
+      if (!match) continue;
+      if (f.length == folder.length) {
+        here.add(d);
+      } else {
+        subfolders.update(f[folder.length], (n) => n + 1, ifAbsent: () => 1);
+      }
+    }
+    final names = subfolders.keys.toList();
+    // Anni e mesi dal più recente; il resto in ordine alfabetico.
+    final dated = RegExp(r'^\d');
+    names.sort((x, y) {
+      if (dated.hasMatch(x) && dated.hasMatch(y)) return y.compareTo(x);
+      return x.toLowerCase().compareTo(y.toLowerCase());
+    });
+    here.sort((x, y) => y.created.compareTo(x.created));
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 96),
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: Row(
+            children: [
+              ActionChip(
+                avatar: const Icon(Icons.home_outlined, size: 18),
+                label: const Text('Archivio'),
+                onPressed: folder.isEmpty ? null : () => setState(() => folder = const []),
+              ),
+              for (var i = 0; i < folder.length; i++) ...[
+                const Icon(Icons.chevron_right, size: 18),
+                ActionChip(
+                  label: Text(folder[i]),
+                  onPressed: i == folder.length - 1
+                      ? null
+                      : () => setState(() => folder = folder.sublist(0, i + 1)),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (names.isEmpty && here.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: Text('Nessun documento qui')),
+          ),
+        for (final n in names)
+          ListTile(
+            leading: Icon(
+              dated.hasMatch(n) ? Icons.folder_outlined : Icons.folder,
+              color: dated.hasMatch(n) ? null : brandBlue,
+            ),
+            title: Text(n, style: const TextStyle(fontWeight: FontWeight.w600)),
+            trailing: Text('${subfolders[n]}', style: theme.textTheme.labelLarge),
+            onTap: () => setState(() => folder = [...folder, n]),
+          ),
+        if (names.isNotEmpty && here.isNotEmpty) const Divider(height: 1),
+        for (final d in here) _docTile(app, d),
+      ],
     );
   }
 

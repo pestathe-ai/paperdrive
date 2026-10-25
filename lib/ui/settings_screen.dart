@@ -330,6 +330,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
               app.saveSettings();
             },
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.phone_android),
+            title: const Text('Tieni i file anche sul telefono'),
+            subtitle: Text(s.keepFilesLocal
+                ? 'Tutti i PDF sul telefono: si aprono anche senza internet'
+                : 'Sul telefono solo l\'elenco: i PDF stanno su Drive e si scaricano quando li apri '
+                    '(restano qualche giorno). Un file viene tolto solo dopo che è arrivato su Drive.'),
+            value: s.keepFilesLocal,
+            onChanged: (v) {
+              s.keepFilesLocal = v;
+              app.saveSettings();
+            },
+          ),
+          if (!s.keepFilesLocal && s.driveEnabled)
+            FutureBuilder<int>(
+              future: app.storage.docsSize(),
+              builder: (context, snap) => ListTile(
+                leading: const Icon(Icons.cleaning_services_outlined),
+                title: const Text('Libera spazio ora'),
+                subtitle: Text(snap.hasData
+                    ? 'File sul telefono: ${(snap.data! / (1024 * 1024)).toStringAsFixed(1)} MB'
+                    : 'Calcolo…'),
+                onTap: () async {
+                  final n = await app.freeSpaceNow();
+                  if (context.mounted) {
+                    showMessage(context, n == 0 ? 'Niente da togliere (o file non ancora su Drive)' : 'Tolti $n file dal telefono');
+                    setState(() {});
+                  }
+                },
+              ),
+            ),
           const Divider(height: 32),
           ListenableBuilder(listenable: app.ai, builder: (context, _) => _aiSection(app, theme)),
           const Divider(height: 32),

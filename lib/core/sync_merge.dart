@@ -104,6 +104,7 @@ FilePlan planFiles(
   required Set<String> localFiles,
   required Set<String> remoteFiles,
   bool canWrite = true,
+  bool downloadMissing = true,
 }) {
   final upload = <String>[];
   final download = <String>[];
@@ -117,7 +118,8 @@ FilePlan planFiles(
       final local = localFiles.contains(name);
       final remote = remoteFiles.contains(name);
       if (local && !remote && canWrite) upload.add(name);
-      if (remote && !local) download.add(name);
+      // Con "solo elenco sul telefono" i file restano su Drive finché non servono.
+      if (remote && !local && downloadMissing) download.add(name);
     }
   }
   bool known(String name) => merged.documents.containsKey(docIdOfFile(name));

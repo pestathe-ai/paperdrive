@@ -61,6 +61,12 @@ class AppState extends ChangeNotifier {
   String? _trainedSignature;
   final SearchIndex searchIndex = SearchIndex();
 
+  /// File (nomi interni) già su Google Drive.
+  Set<String> onDrive = <String>{};
+
+  /// Il documento è tutto su Drive (null se Drive non è collegato).
+  bool? isOnDrive(Document d) => settings.driveEnabled ? d.fileNames.every(onDrive.contains) : null;
+
   /// Modello linguistico sul telefono (facoltativo).
   final AiAssistant ai = AiAssistant();
 
@@ -91,6 +97,7 @@ class AppState extends ChangeNotifier {
     archive = await storage.loadArchive();
     settings = await storage.loadSettings();
     mail = await storage.loadMail();
+    onDrive = await storage.loadOnDrive();
     ingestor = Ingestor(storage);
     drive = DriveSync(storage);
     mailImporter = MailImporter(ingestor);
@@ -558,7 +565,13 @@ class AppState extends ChangeNotifier {
 
   Future<File?> _ensure(String name, {String? thumbFor}) async {
     final f = storage.docFile(name);
-    if (await f.exists()) return f;
+    if (await f.exists()) {
+      // Aperto ora: resta sul telefono ancora qualche giorno.
+      try {
+        await f.setLastModified(DateTime.now());
+      } catch (_) {}
+      return f;
+    }
     if (!settings.driveEnabled) return null;
     final ok = await drive.fetchFile(name, folderId: _folder);
     if (!ok) return null;
@@ -810,6 +823,27 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Toglie dal telefono i PDF già su Drive e non aperti negli ultimi
+  /// giorni (resta l'elenco con anteprime e testo).
+  Future<int> _freeSpace({Duration keep = const Duration(days: 3)}) async {
+    var n = 0;
+    final limit = DateTime.now().subtract(keep);
+    for (final name in await storage.localFileNames()) {
+      if (!onDrive.contains(name)) continue; // non ancora caricato: si tiene
+      final f = storage.docFile(name);
+      try {
+        if ((await f.lastModified()).isBefore(limit)) {
+          await f.delete();
+          n++;
+        }
+      } catch (_) {}
+    }
+    return n;
+  }
+
+  /// Libera subito lo spazio (tutti i file già su Drive).
+  Future<int> freeSpaceNow() => _freeSpace(keep: Duration.zero);
+
   /// Assistente "Chiedi": capisce la domanda (regole + AI sul telefono, se
   /// scaricata), cerca e prepara la risposta.
   Future<(AskQuery, List<AskHit>, String)> ask(String question, {bool useAi = true}) async {
@@ -836,6 +870,19 @@ class AppState extends ChangeNotifier {
       changed(entities: true);
     }
     return changes;
+  }
+
+  /// Da sistemare: documenti nuovi ancora "da esaminare" (con l'eventuale
+  /// domanda), dal più recente.
+  List<(Document, DocQuestion?)> get toReview {
+    final inbox = archive.inboxTags.map((t) => t.id).toSet();
+    final qs = {for (final q in questions) q.doc.id: q};
+    final out = [
+      for (final d in archive.activeDocuments)
+        if (d.tagIds.any(inbox.contains) || qs.containsKey(d.id)) (d, qs[d.id]),
+    ];
+    out.sort((x, y) => y.$1.added.compareTo(x.$1.added));
+    return out;
   }
 
   /// Domande aperte: documenti su cui l'app ha un dubbio.
@@ -1217,10 +1264,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       await storage.saveArchive(archive);
-      final out = await drive.sync(archive, folderId: _folder, status: (s) {
-        syncStatus = s;
-        notifyListeners();
-      });
+      final out = await drive.sync(
+        archive,
+        folderId: _folder,
+        downloadMissing: settings.keepFilesLocal,
+        status: (s) {
+          syncStatus = s;
+          notifyListeners();
+        },
+      );
       // Le modifiche fatte durante la sincronizzazione non si perdono.
       final (merged, _) = mergeArchives(archive, out.archive);
       archive = merged;
@@ -1233,6 +1285,9 @@ class AppState extends ChangeNotifier {
       }
       searchIndex.clear();
       if (out.learned > 0) _scheduleTraining();
+      onDrive = out.remoteNames;
+      await storage.saveOnDrive(onDrive);
+      if (!settings.keepFilesLocal) await _freeSpace();
       await storage.saveArchive(archive);
       settings
         ..driveFolderId = out.folderId

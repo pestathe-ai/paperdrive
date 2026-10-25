@@ -24,6 +24,10 @@ class Settings {
   /// Importa da sola la cartella "Da importare" su Drive all'apertura.
   bool autoImport = false;
 
+  /// Tiene i PDF anche sul telefono (altrimenti solo l'elenco: i file
+  /// restano su Drive e si scaricano quando si aprono).
+  bool keepFilesLocal = false;
+
   /// Cartella Drive dell'archivio (la mia o una condivisa con me).
   String? driveFolderId;
   String? driveFolderOwner;
@@ -51,6 +55,7 @@ class Settings {
         'aiModel': aiModel,
         'ai': aiEnabled,
         'autoImport': autoImport,
+        'keepLocal': keepFilesLocal,
       };
 
   static Settings fromJson(Map<String, dynamic> j) => Settings()
@@ -69,7 +74,8 @@ class Settings {
     ..lastSyncError = j['lastErr'] as String?
     ..aiModel = j['aiModel'] as String?
     ..aiEnabled = j['ai'] as bool? ?? false
-    ..autoImport = j['autoImport'] as bool? ?? false;
+    ..autoImport = j['autoImport'] as bool? ?? false
+    ..keepFilesLocal = j['keepLocal'] as bool? ?? false;
 }
 
 /// File sul telefono: indice, impostazioni, PDF e anteprime.
@@ -93,6 +99,28 @@ class Storage {
   File get _indexFile => File(p.join(root.path, 'index.json'));
   File get _settingsFile => File(p.join(root.path, 'settings.json'));
   File get _mailFile => File(p.join(root.path, 'mail.json'));
+  File get _onDriveFile => File(p.join(root.path, 'ondrive.json'));
+
+  /// File già caricati su Drive (per il simbolo e per liberare spazio).
+  Future<Set<String>> loadOnDrive() async {
+    try {
+      if (await _onDriveFile.exists()) {
+        return ((jsonDecode(await _onDriveFile.readAsString()) as List).map((e) => '$e')).toSet();
+      }
+    } catch (_) {}
+    return <String>{};
+  }
+
+  Future<void> saveOnDrive(Set<String> names) => _writeAtomic(_onDriveFile, jsonEncode(names.toList()));
+
+  /// Spazio occupato dai PDF sul telefono (byte).
+  Future<int> docsSize() async {
+    var n = 0;
+    await for (final e in Directory(docsDir).list()) {
+      if (e is File) n += await e.length();
+    }
+    return n;
+  }
 
   File docFile(String fileName) => File(p.join(docsDir, fileName));
   File thumbFile(String docId) => File(p.join(thumbsDir, '$docId.png'));

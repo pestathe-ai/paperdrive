@@ -34,6 +34,7 @@ class SyncOutcome {
     required this.canEdit,
     required this.ownerEmail,
     required this.downloadedNames,
+    this.remoteNames = const {},
   });
   final Archive archive;
   final int uploaded;
@@ -51,6 +52,9 @@ class SyncOutcome {
 
   /// File appena scaricati (nomi interni, servono le anteprime).
   final List<String> downloadedNames;
+
+  /// File (nomi interni) che dopo la sincronizzazione sono su Drive.
+  final Set<String> remoteNames;
 }
 
 /// Persona con accesso all'archivio condiviso.
@@ -374,14 +378,16 @@ class DriveSync {
     Archive local, {
     required String? folderId,
     void Function(String)? status,
+    bool downloadMissing = true,
   }) =>
-      _withApi((api) => _sync(api, local, folderId: folderId, status: status));
+      _withApi((api) => _sync(api, local, folderId: folderId, status: status, downloadMissing: downloadMissing));
 
   Future<SyncOutcome> _sync(
     drive.DriveApi api,
     Archive local, {
     required String? folderId,
     void Function(String)? status,
+    bool downloadMissing = true,
   }) async {
     status?.call('Connessione a Google Drive…');
     _folders.clear();
@@ -411,6 +417,7 @@ class DriveSync {
     final ownerEmail = owners.isEmpty ? null : owners.first.emailAddress;
 
     var current = local;
+    var lastRemote = <String>{};
     var uploaded = 0, removed = 0, organized = 0, learned = 0;
     final downloadedNames = <String>[];
     for (var attempt = 0; attempt < 3; attempt++) {
@@ -474,6 +481,7 @@ class DriveSync {
         localFiles: await storage.localFileNames(),
         remoteFiles: remoteFiles.keys.toSet(),
         canWrite: canWrite,
+        downloadMissing: downloadMissing,
       );
 
       var i = 0;
@@ -594,6 +602,7 @@ class DriveSync {
         }
       }
 
+      lastRemote = remoteFiles.keys.toSet();
       final mergedRaw = jsonEncode(merged.toJson());
       if (!canWrite || mergedRaw == remoteRaw) break;
 
@@ -637,6 +646,7 @@ class DriveSync {
       canEdit: canWrite,
       ownerEmail: ownerEmail,
       downloadedNames: downloadedNames,
+      remoteNames: lastRemote,
     );
   }
 
