@@ -111,20 +111,22 @@ FilePlan planFiles(
   final deleteRemote = <String>[];
   final deleteLocal = <String>[];
   final expected = <String>{};
+  final onDrive = <String>{};
   for (final d in merged.documents.values) {
     if (d.deleted) continue;
-    for (final name in d.fileNames) {
-      expected.add(name);
-      final local = localFiles.contains(name);
-      final remote = remoteFiles.contains(name);
-      if (local && !remote && canWrite) upload.add(name);
-      // Con "solo elenco sul telefono" i file restano su Drive finché non servono.
-      if (remote && !local && downloadMissing) download.add(name);
-    }
+    expected.addAll(d.fileNames);
+    // Su Drive un solo file per documento (il PDF/A se c'è).
+    final name = d.primaryFile;
+    onDrive.add(name);
+    final local = localFiles.contains(name);
+    final remote = remoteFiles.contains(name);
+    if (local && !remote && canWrite) upload.add(name);
+    // Con "solo elenco sul telefono" i file restano su Drive finché non servono.
+    if (remote && !local && downloadMissing) download.add(name);
   }
   bool known(String name) => merged.documents.containsKey(docIdOfFile(name));
   for (final name in remoteFiles) {
-    if (canWrite && known(name) && !expected.contains(name)) {
+    if (canWrite && known(name) && !onDrive.contains(name)) {
       deleteRemote.add(name);
     }
   }

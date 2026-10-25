@@ -395,6 +395,11 @@ class Document with Syncable {
   /// Tutti i file di questo documento (originale ed eventuale archiviato).
   List<String> get fileNames => [fileName, if (hasArchive) archiveFileName];
 
+  /// Il file che sta su Google Drive: la versione ricercabile PDF/A se c'è
+  /// (stessa immagine, con il testo), altrimenti l'originale. Un solo file
+  /// per documento.
+  String get primaryFile => hasArchive ? archiveFileName : fileName;
+
   void touch() {
     modified = nowMs();
     modifiedBy = Session.user ?? modifiedBy;

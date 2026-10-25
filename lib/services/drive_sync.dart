@@ -368,8 +368,7 @@ class DriveSync {
   ) async {
     final (folders, _) = drivePath(a, d);
     final name = driveFileName(a, d, archived: archived);
-    final segs = archived ? [pdfaFolderName, ...folders] : folders;
-    final parent = a.config.organizeDrive || archived ? await _folderFor(api, root, segs) : root;
+    final parent = a.config.organizeDrive ? await _folderFor(api, root, folders) : root;
     return (parent, name);
   }
 
@@ -463,7 +462,7 @@ class DriveSync {
               remoteFiles[name] = _Remote(c.id!, c.name ?? '', c.parents ?? const [], c.version, true, props);
               continue;
             }
-            if (name != d.fileName) continue; // la copia PDF/A si ricarica da sola
+            if (name != d.primaryFile) continue;
             await api.files.update(drive.File()..trashed = false, f.id!, $fields: 'id');
             remoteFiles[name] = _Remote(f.id!, f.name ?? '', f.parents ?? const [], f.version, true, f.properties ?? const {});
             d
@@ -536,7 +535,7 @@ class DriveSync {
       if (canWrite) {
         for (final d in merged.documents.values) {
           if (d.deleted) continue;
-          final r = remoteFiles[d.fileName];
+          final r = remoteFiles[d.primaryFile];
           if (r == null || !r.tagged) continue;
           final lastName = r.props['pdName'];
           final lastParent = r.props['pdParent'];
@@ -602,6 +601,18 @@ class DriveSync {
         }
       }
 
+      // La vecchia cartella "PDF-A" (v0.13): rimasta vuota, si toglie.
+      if (canWrite && attempt == 0) {
+        try {
+          final old = await _listAll(
+            api,
+            "'${_q(root)}' in parents and name = '$pdfaFolderName' and mimeType = '$folderMime' and trashed = false",
+          );
+          for (final f in old) {
+            if (f.id != null) await _trashIfEmpty(api, f.id!);
+          }
+        } catch (_) {}
+      }
       lastRemote = remoteFiles.keys.toSet();
       final mergedRaw = jsonEncode(merged.toJson());
       if (!canWrite || mergedRaw == remoteRaw) break;
@@ -766,6 +777,19 @@ class DriveSync {
           if (e.status != 404) rethrow;
         }
       });
+
+  /// Cestina [id] e le sue sottocartelle se non contengono file.
+  Future<bool> _trashIfEmpty(drive.DriveApi api, String id) async {
+    final items = await _listAll(api, "'${_q(id)}' in parents and trashed = false");
+    var empty = true;
+    for (final f in items) {
+      if (f.id == null) continue;
+      if (f.mimeType == folderMime && await _trashIfEmpty(api, f.id!)) continue;
+      empty = false;
+    }
+    if (empty) await api.files.update(drive.File()..trashed = true, id, $fields: 'id');
+    return empty;
+  }
 
   /// Toglie le sottocartelle rimaste vuote in "Da importare".
   Future<void> cleanInbox({required String? folderId}) => _withApi((api) async {

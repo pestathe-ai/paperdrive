@@ -256,7 +256,8 @@ void main() {
           localFiles: {'${d.id}.pdf', '${d.id}.archive2.pdf'},
           remoteFiles: {'${d.id}.pdf', '${d.id}.archive1.pdf', 'sconosciuto.pdf'});
       expect(plan.upload, ['${d.id}.archive2.pdf']);
-      expect(plan.deleteRemote, ['${d.id}.archive1.pdf']);
+      // Su Drive resta solo il PDF/A: l'originale e la vecchia versione si tolgono.
+      expect(plan.deleteRemote, ['${d.id}.archive1.pdf', '${d.id}.pdf']);
       expect(plan.download, isEmpty);
       final ro = planFiles(a,
           localFiles: {'${d.id}.pdf'},

@@ -65,7 +65,7 @@ class AppState extends ChangeNotifier {
   Set<String> onDrive = <String>{};
 
   /// Il documento è tutto su Drive (null se Drive non è collegato).
-  bool? isOnDrive(Document d) => settings.driveEnabled ? d.fileNames.every(onDrive.contains) : null;
+  bool? isOnDrive(Document d) => settings.driveEnabled ? onDrive.contains(d.primaryFile) : null;
 
   /// Modello linguistico sul telefono (facoltativo).
   final AiAssistant ai = AiAssistant();
@@ -584,8 +584,13 @@ class AppState extends ChangeNotifier {
     return f;
   }
 
-  /// Il PDF originale; se manca sul telefono lo scarica da Drive.
-  Future<File?> ensureFile(Document d) => _ensure(d.fileName, thumbFor: d.id);
+  /// Il PDF del documento: l'originale se è sul telefono, altrimenti quello
+  /// su Drive (la versione PDF/A, se c'è), scaricato.
+  Future<File?> ensureFile(Document d) async {
+    final local = storage.docFile(d.fileName);
+    if (await local.exists()) return _ensure(d.fileName, thumbFor: d.id);
+    return _ensure(d.primaryFile, thumbFor: d.id);
+  }
 
   /// La versione archiviata (PDF/A), se esiste.
   Future<File?> ensureArchive(Document d) async =>
@@ -828,8 +833,13 @@ class AppState extends ChangeNotifier {
   Future<int> _freeSpace({Duration keep = const Duration(days: 3)}) async {
     var n = 0;
     final limit = DateTime.now().subtract(keep);
+    final primaries = <String, String>{
+      for (final d in archive.documents.values) d.fileName: d.primaryFile,
+    };
     for (final name in await storage.localFileNames()) {
-      if (!onDrive.contains(name)) continue; // non ancora caricato: si tiene
+      // Si toglie se è su Drive, o se su Drive c'è la sua versione PDF/A.
+      final onCloud = onDrive.contains(name) || onDrive.contains(primaries[name] ?? '');
+      if (!onCloud) continue; // non ancora caricato: si tiene
       final f = storage.docFile(name);
       try {
         if ((await f.lastModified()).isBefore(limit)) {
