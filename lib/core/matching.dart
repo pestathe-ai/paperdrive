@@ -102,6 +102,45 @@ Map<String, double> termVector(String text) {
   return v;
 }
 
+/// Pesi delle parole sull'archivio (IDF): le parole presenti in quasi tutti
+/// i documenti (il tuo nome, l'indirizzo, "euro", "totale") non contano;
+/// contano quelle tipiche di pochi documenti.
+class Idf {
+  Idf._(this._w, this._default);
+  final Map<String, double> _w;
+  final double _default;
+
+  double operator [](String w) => _w[w] ?? _default;
+
+  static Idf? _cache;
+  static Object? _cacheKey;
+
+  /// Calcolati sui documenti attivi (con cache finché l'archivio non cambia).
+  static Idf of(Archive a) {
+    final docs = a.activeDocuments;
+    var len = 0;
+    for (final d in docs) {
+      len += d.content.length;
+    }
+    final key = (identityHashCode(a), docs.length, len);
+    if (_cache != null && _cacheKey == key) return _cache!;
+    final df = <String, int>{};
+    for (final d in docs) {
+      for (final w in termVector(d.content).keys) {
+        df[w] = (df[w] ?? 0) + 1;
+      }
+    }
+    final n = docs.length;
+    final w = {for (final e in df.entries) e.key: log((n + 1) / (e.value + 1)) + 0.1};
+    _cacheKey = key;
+    return _cache = Idf._(w, log(n + 1) + 0.1);
+  }
+}
+
+/// Vettore pesato con l'IDF (per confrontare documenti dello stesso archivio).
+Map<String, double> weightedVector(String text, Idf idf) =>
+    termVector(text).map((k, v) => MapEntry(k, v * idf[k]));
+
 double _norm(Map<String, double> v) =>
     sqrt(v.values.fold<double>(0, (s, x) => s + x * x));
 

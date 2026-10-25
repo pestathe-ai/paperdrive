@@ -255,6 +255,9 @@ class Mlp {
 // ignore: non_constant_identifier_names
 List<double> Float64List0(int n) => Float64List(n);
 
+/// Esempi minimi per imparare un'etichetta.
+const int minExamples = 3;
+
 /// Un classificatore a classe singola (corrispondente, tipo, percorso).
 class _Single {
   _Single(this.classes, this.net);
@@ -284,13 +287,22 @@ List<double> _balanced(List<String?> labels) {
   return [for (final l in labels) n / (k * counts[l]!)];
 }
 
-_Single? _trainSingle(List<Sparse> xs, List<String?> labels, int inputs) {
+_Single? _trainSingle(List<Sparse> xs, List<String?> rawLabels, int inputs) {
+  // Con pochi esempi l'app tirerebbe a indovinare: servono almeno 3
+  // documenti per etichetta, gli altri contano come "nessuna".
+  final counts = <String, int>{};
+  for (final l in rawLabels.whereType<String>()) {
+    counts[l] = (counts[l] ?? 0) + 1;
+  }
+  final labels = [for (final l in rawLabels) l != null && counts[l]! >= minExamples ? l : null];
   final distinct = labels.whereType<String>().toSet();
   if (distinct.isEmpty) return null;
   final classes = <String?>[null, ...distinct.toList()..sort()];
   if (!labels.contains(null)) classes.remove(null);
   if (classes.length == 1) {
-    // Una sola classe possibile: Paperless la assegna sempre (se automatica).
+    // Una sola classe possibile: Paperless la assegna sempre; qui solo con
+    // abbastanza esempi.
+    if (labels.length < 10) return null;
     return _Single(classes, Mlp(inputs, 1, multiLabel: false));
   }
   final ys = [
@@ -304,7 +316,9 @@ _Single? _trainSingle(List<Sparse> xs, List<String?> labels, int inputs) {
 /// Il classificatore addestrato.
 class DocumentClassifier {
   DocumentClassifier._(this.vectorizer, this._corr, this._type, this._path, this._tagIds, this._tags,
-      this.trainedOn);
+      this.trainedOn, this._minTraining);
+
+  final int _minTraining;
 
   final Vectorizer vectorizer;
   final _Single? _corr;
@@ -316,18 +330,25 @@ class DocumentClassifier {
   /// Quanti documenti sono stati usati.
   final int trainedOn;
 
-  static const double matchThreshold = 0.3;
+  /// Più severa di Paperless (0.3): gli archivi sul telefono sono piccoli e
+  /// un'etichetta sbagliata manda il documento nella cartella sbagliata.
+  static const double matchThreshold = 0.55;
+
+  /// Sotto questo numero di documenti esaminati non si prevede nulla.
+  static const int minTraining = 10;
+
+  bool get _ready => trainedOn >= _minTraining;
 
   String? predictCorrespondent(String content) =>
-      _corr?.predict(vectorizer.transform(content), matchThreshold);
+      _ready ? _corr?.predict(vectorizer.transform(content), matchThreshold) : null;
   String? predictDocumentType(String content) =>
-      _type?.predict(vectorizer.transform(content), matchThreshold);
+      _ready ? _type?.predict(vectorizer.transform(content), matchThreshold) : null;
   String? predictStoragePath(String content) =>
-      _path?.predict(vectorizer.transform(content), matchThreshold);
+      _ready ? _path?.predict(vectorizer.transform(content), 0.7) : null;
 
   List<String> predictTags(String content) {
     final net = _tags;
-    if (net == null) return const [];
+    if (net == null || !_ready) return const [];
     final p = net.predictProba(vectorizer.transform(content));
     return [
       for (var k = 0; k < _tagIds.length; k++)
@@ -337,7 +358,7 @@ class DocumentClassifier {
 
   /// Addestra sui documenti dell'archivio. Restituisce null se non ci sono
   /// documenti utilizzabili (come il "No training data available").
-  static DocumentClassifier? train(Archive a) {
+  static DocumentClassifier? train(Archive a, {int minTraining = DocumentClassifier.minTraining}) {
     final inbox = a.inboxTags.map((t) => t.id).toSet();
     // Come Paperless i documenti esaminati; in più quelli corretti a mano.
     final docs = a.activeDocuments
@@ -382,6 +403,7 @@ class DocumentClassifier {
       tagIds,
       tagNet,
       docs.length,
+      minTraining,
     );
   }
 }

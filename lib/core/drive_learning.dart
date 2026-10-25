@@ -148,7 +148,9 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
         final tpl = '${template.join('/')}/{title} {data}';
         var path = a.activeStoragePaths.where((p) => p.template == tpl).firstOrNull;
         if (path == null) {
-          path = StoragePath(name: custom.join(' / '), template: tpl, algorithm: MatchAlgorithm.auto);
+          // Niente classificatore: ci vanno solo i documenti molto simili
+          // (applyLearnedFolder) o quelli che sposti tu.
+          path = StoragePath(name: custom.join(' / '), template: tpl);
           a.storagePaths[path.id] = path;
         }
         if (d.storagePathId != path.id) {
@@ -171,10 +173,17 @@ String folderOf(Archive a, Document d) => drivePath(a, d).$1.join('/');
 /// cambia.
 bool applyLearnedFolder(Archive a, Document d) {
   if (d.storagePathId != null) return false;
-  final (example, _) = correctedExample(a, d, min: 0.5);
+  final (example, score) = correctedExample(a, d, min: 0.6);
   final pathId = example?.storagePathId;
   if (example == null || pathId == null || pathId == healthPathId) return false;
   if (a.storagePath(pathId) == null || example.typeId != d.typeId) return false;
+  // Mittente diverso: serve una somiglianza molto alta.
+  if (d.correspondentId != null &&
+      example.correspondentId != null &&
+      d.correspondentId != example.correspondentId &&
+      score < 0.8) {
+    return false;
+  }
   d.storagePathId = pathId;
   return true;
 }

@@ -169,4 +169,23 @@ void main() {
       expect(d2.typeId, 'st-scontrino');
     });
   });
+
+  test('il nome e l\'indirizzo presenti ovunque non rendono simili due documenti', () {
+    final a = Archive.starter();
+    const me = 'Mario Rossi via Verdi 1 20099 Sesto San Giovanni codice fiscale RSSMRA80A01F205X totale euro';
+    for (var i = 0; i < 6; i++) {
+      final o = Document(title: 'altro $i', content: '$me documento numero $i varie parole diverse $i');
+      a.documents[o.id] = o;
+    }
+    final box = Document(
+      title: 'Rata box',
+      content: '$me condominio box auto rata spese condominiali amministratore',
+      typeId: 'st-casa',
+      userEdited: true,
+    );
+    a.documents[box.id] = box;
+    final bolletta = Document(title: 'x', content: '$me bolletta luce kwh energia elettrica consumi');
+    final (example, _) = correctedExample(a, bolletta);
+    expect(example, isNull);
+  });
 }

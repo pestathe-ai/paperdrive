@@ -56,6 +56,13 @@ int ensurePeopleEntities(Archive a) {
   }
   // Data alla fine del nome del file invece che all'inizio (versioni < 0.13).
   for (final p in a.storagePaths.values) {
+    // Sottocartelle create dagli spostamenti (v0.12–0.14): senza classificatore.
+    if (p.algorithm == MatchAlgorithm.auto &&
+        p.template.startsWith('{document_type}/') &&
+        p.template.split('/').any((seg) => seg.isNotEmpty && !seg.contains('{'))) {
+      p.algorithm = MatchAlgorithm.none;
+      n++;
+    }
     if (p.template.endsWith('/{created} {title}')) {
       p.template = '${p.template.substring(0, p.template.length - '{created} {title}'.length)}{title} {data}';
       n++;

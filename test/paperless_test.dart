@@ -154,7 +154,7 @@ void main() {
 
     test('impara corrispondenti e tag dagli esempi', () {
       final a = build();
-      final clf = DocumentClassifier.train(a)!;
+      final clf = DocumentClassifier.train(a, minTraining: 0)!;
       expect(clf.trainedOn, 6);
       expect(clf.predictCorrespondent('servizio elettrico nazionale nuova bolletta kwh'), 'enel');
       expect(clf.predictCorrespondent('teleriscaldamento milano calore febbraio'), 'a2a');
@@ -177,7 +177,7 @@ void main() {
       for (final c in a.correspondents.values) {
         c.algorithm = MatchAlgorithm.any;
       }
-      final clf = DocumentClassifier.train(a)!;
+      final clf = DocumentClassifier.train(a, minTraining: 0)!;
       expect(clf.predictCorrespondent('teleriscaldamento milano calore febbraio'), 'a2a');
     });
   });
@@ -276,7 +276,7 @@ void main() {
       }
       a.documents['o'] = Document(id: 'o', title: 'y', content: 'referto ospedale visita cardiologica esame', typeId: 'st-sanita')
         ..userEdited = true;
-      final clf = DocumentClassifier.train(a)!;
+      final clf = DocumentClassifier.train(a, minTraining: 0)!;
       final n = Document(title: 'z', content: label('2026.10.20', 'zzz'));
       // Le parole chiave predefinite non bastano: decide ciò che ha imparato.
       final r = computeMatches(a, n, classifier: clf);

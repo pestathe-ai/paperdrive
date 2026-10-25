@@ -10,7 +10,7 @@ import 'dart:convert';
 import 'archive.dart';
 import 'dates.dart';
 import 'extract.dart' show meaningfulFileName;
-import 'matching.dart' show cosine, matchesRule, matchText, termVector;
+import 'matching.dart' show Idf, cosine, matchesRule, matchText, weightedVector;
 import 'models.dart';
 import 'organize.dart' show learnedTitle;
 import 'text_utils.dart';
@@ -238,13 +238,14 @@ bool _userRule(Matchable? m, Document d) =>
 /// Il documento corretto a mano dall'utente più simile a [d], con la
 /// somiglianza (≥ [min]), oppure (null, 0).
 (Document?, double) correctedExample(Archive a, Document d, {double min = 0.5}) {
-  final v = termVector(d.content);
+  final idf = Idf.of(a);
+  final v = weightedVector(d.content, idf);
   if (v.isEmpty) return (null, 0);
   Document? best;
   var bestScore = min;
   for (final o in a.activeDocuments) {
     if (o.id == d.id || !o.userEdited || o.content.isEmpty) continue;
-    final s = cosine(v, termVector(o.content));
+    final s = cosine(v, weightedVector(o.content, idf));
     if (s >= bestScore) {
       bestScore = s;
       best = o;

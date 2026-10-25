@@ -4,7 +4,7 @@ library;
 
 import 'archive.dart';
 import 'extract.dart';
-import 'matching.dart' show cosine, matchText, termVector;
+import 'matching.dart' show Idf, cosine, matchText, weightedVector;
 import 'models.dart';
 import 'workflows.dart';
 
@@ -103,14 +103,15 @@ String titleToTemplate(Archive a, Document d) {
 }
 
 /// Il documento rinominato a mano più simile a [d] (somiglianza ≥ [min]).
-Document? similarRenamed(Archive a, Document d, {double min = 0.45}) {
-  final v = termVector(d.content);
+Document? similarRenamed(Archive a, Document d, {double min = 0.5}) {
+  final idf = Idf.of(a);
+  final v = weightedVector(d.content, idf);
   if (v.isEmpty) return null;
   Document? best;
   var bestScore = min;
   for (final o in a.activeDocuments) {
     if (o.id == d.id || !o.titleEdited || o.content.isEmpty) continue;
-    var s = cosine(v, termVector(o.content));
+    var s = cosine(v, weightedVector(o.content, idf));
     // Stesso mittente o stessa categoria: indizio in più.
     if (d.correspondentId != null && o.correspondentId == d.correspondentId) s += 0.1;
     if (d.typeId != null && o.typeId == d.typeId) s += 0.05;
@@ -249,12 +250,13 @@ bool logChanges(Archive a, Map<String, dynamic> before, Document after, {String?
 
 /// I documenti più simili a [d] per contenuto (somiglianza 0..1).
 List<(Document, double)> similarDocuments(Archive a, Document d, {int limit = 6}) {
-  final v = termVector(matchText(d));
+  final idf = Idf.of(a);
+  final v = weightedVector(matchText(d), idf);
   if (v.isEmpty) return const [];
   final out = <(Document, double)>[];
   for (final o in a.activeDocuments) {
     if (o.id == d.id) continue;
-    final s = cosine(v, termVector(matchText(o)));
+    final s = cosine(v, weightedVector(matchText(o), idf));
     if (s >= 0.15) out.add((o, s));
   }
   out.sort((x, y) => y.$2.compareTo(x.$2));

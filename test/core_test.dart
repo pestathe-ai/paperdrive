@@ -106,7 +106,7 @@ void main() {
       // Senza classificatore "Automatica" non assegna nulla (come Paperless).
       final nuovo = doc('n', 'Referto visita ospedale esame');
       expect(computeMatches(a, nuovo).tagIds, isEmpty);
-      final clf = DocumentClassifier.train(a)!;
+      final clf = DocumentClassifier.train(a, minTraining: 0)!;
       expect(computeMatches(a, nuovo, classifier: clf).tagIds, contains(medico.id));
       final affitto = doc('n2', 'Canone affitto appartamento');
       expect(computeMatches(a, affitto, classifier: clf).tagIds, isNot(contains(medico.id)));
