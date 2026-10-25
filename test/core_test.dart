@@ -711,4 +711,13 @@ Movimenti dal               01/06/2025            al         31/05/2026
       expect(detectDate('Tel. 039.320981 del 05/03/2024'), DateTime(2024, 3, 5));
     });
   });
+
+  test('un documento nel cestino non è un doppione', () {
+    final a = Archive();
+    final d = Document(title: 'x', checksum: 'abc');
+    a.documents[d.id] = d;
+    expect(a.duplicateOf('abc'), d);
+    d.inTrash = true;
+    expect(a.duplicateOf('abc'), isNull);
+  });
 }

@@ -187,8 +187,8 @@ String driveFileName(Archive a, Document d, {required bool archived}) {
   return '$name.pdf';
 }
 
-/// Le copie ricercabili PDF/A stanno in una cartella a parte, con la stessa
-/// struttura: nelle cartelle dei documenti c'è un solo file per documento.
+/// Cartella delle copie PDF/A della v0.13 (ora tolta: su Drive c'è un solo
+/// file per documento).
 const String pdfaFolderName = 'PDF-A';
 
 // ---------------------------------------------------------------------------

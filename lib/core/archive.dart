@@ -106,7 +106,8 @@ class Archive {
   Document? duplicateOf(String checksum) {
     if (checksum.isEmpty) return null;
     for (final d in documents.values) {
-      if (!d.deleted && d.checksum == checksum) return d;
+      // Un documento nel cestino non conta: si può importare di nuovo.
+      if (!d.deleted && !d.inTrash && d.checksum == checksum) return d;
     }
     return null;
   }
