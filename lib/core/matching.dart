@@ -133,13 +133,20 @@ class Idf {
     final n = docs.length;
     final w = {for (final e in df.entries) e.key: log((n + 1) / (e.value + 1)) + 0.1};
     _cacheKey = key;
-    return _cache = Idf._(w, log(n + 1) + 0.1);
+    // Una parola mai vista conta come una presente in un solo documento.
+    return _cache = Idf._(w, log((n + 1) / 2) + 0.1);
   }
 }
 
 /// Vettore pesato con l'IDF (per confrontare documenti dello stesso archivio).
-Map<String, double> weightedVector(String text, Idf idf) =>
-    termVector(text).map((k, v) => MapEntry(k, v * idf[k]));
+/// Numeri, codici, date e importi non contano: cambiano da un documento
+/// all'altro anche quando sono dello stesso tipo.
+Map<String, double> weightedVector(String text, Idf idf) => {
+      for (final e in termVector(text).entries)
+        if (!_hasDigit.hasMatch(e.key)) e.key: e.value * idf[e.key],
+    };
+
+final RegExp _hasDigit = RegExp(r'\d');
 
 double _norm(Map<String, double> v) =>
     sqrt(v.values.fold<double>(0, (s, x) => s + x * x));
