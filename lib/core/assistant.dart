@@ -390,7 +390,7 @@ String answerText(Archive a, AskQuery q, List<AskHit> hits) {
 // ---------------------------------------------------------------------------
 // Domande quando l'app non è sicura
 
-enum QuestionKind { person, category }
+enum QuestionKind { person, category, folder }
 
 class DocQuestion {
   DocQuestion(this.doc, this.kind, this.options);
@@ -403,6 +403,7 @@ class DocQuestion {
   String get text => switch (kind) {
         QuestionKind.person => 'Di chi è questo documento?',
         QuestionKind.category => 'Che documento è?',
+        QuestionKind.folder => 'Va nella tua sottocartella?',
       };
 }
 
@@ -417,6 +418,11 @@ List<DocQuestion> openQuestions(Archive a) {
     if (d.userEdited || !d.tagIds.any(inbox.contains)) continue;
     if (a.type(d.typeId) == null) {
       out.add(DocQuestion(d, QuestionKind.category, [for (final t in types) t.id]));
+      continue;
+    }
+    final sp = a.storagePath(d.suggestedPathId);
+    if (sp != null && d.storagePathId == null) {
+      out.add(DocQuestion(d, QuestionKind.folder, [sp.id, '']));
       continue;
     }
     if (a.config.people.isNotEmpty &&

@@ -471,7 +471,7 @@ class AppState extends ChangeNotifier {
     if (ai?.title != null && aiMayRetitle(archive, doc)) doc.title = ai!.title!;
     if (folders != null) applyFolderHint(archive, doc, folders);
     applyPeople(archive, doc, aiPerson: ai?.person, aiSpecialty: ai?.specialty, aiHealthKind: ai?.healthKind);
-    if (folders == null) applyLearnedFolder(archive, doc);
+    if (folders == null) applySubfolder(archive, doc, ask: !settings.neverAsk, aiHint: ai?.subfolder);
     dropUnfitPath(archive, doc);
     if (asn != null) {
       doc.asn = asn;
@@ -899,7 +899,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Domande aperte: documenti su cui l'app ha un dubbio.
-  List<DocQuestion> get questions => openQuestions(archive);
+  List<DocQuestion> get questions => settings.neverAsk ? const [] : openQuestions(archive);
 
   /// Risponde a una domanda: la scelta vale come correzione a mano, così
   /// l'app impara.
@@ -915,6 +915,9 @@ class AppState extends ChangeNotifier {
         } else {
           d.customFields[personFieldId] = value;
         }
+      case QuestionKind.folder:
+        if (value.isNotEmpty) d.storagePathId = value;
+        d.suggestedPathId = null;
       case QuestionKind.category:
         d.typeId = value;
         applyPeople(archive, d);

@@ -8,6 +8,7 @@
 library;
 
 import 'ai.dart' show correctedExample, findByName;
+import 'matching.dart' show Idf, termVector, weightedVector;
 import 'archive.dart';
 import 'models.dart';
 import 'organize.dart' show drivePath;
@@ -172,22 +173,99 @@ String folderOf(Archive a, Document d) => drivePath(a, d).$1.join('/');
 /// Se un documento simile corretto a mano sta in una sottocartella
 /// personale, ci va anche questo (stessa categoria). Restituisce true se
 /// cambia.
-bool applyLearnedFolder(Archive a, Document d) {
-  if (d.storagePathId != null) return false;
-  final (example, score) = correctedExample(a, d, min: 0.6);
-  final pathId = example?.storagePathId;
-  if (example == null || pathId == null || pathId == healthPathId) return false;
-  final path = a.storagePath(pathId);
-  if (path == null || example.typeId != d.typeId || !learnedPathFits(a, path, d)) return false;
-  // Mittente diverso: serve una somiglianza molto alta.
-  if (d.correspondentId != null &&
-      example.correspondentId != null &&
-      d.correspondentId != example.correspondentId &&
-      score < 0.8) {
-    return false;
+bool applyLearnedFolder(Archive a, Document d) => applySubfolder(a, d) == SubfolderDecision.assigned;
+
+/// Esito della scelta della sottocartella.
+enum SubfolderDecision { none, assigned, ask }
+
+/// Le parole che distinguono i documenti di una sottocartella dagli altri
+/// della stessa categoria (es. per il box: "box", "roma", "posto",
+/// "condominio"), con il loro peso.
+Map<String, double> folderProfile(Archive a, StoragePath p, String typeId) {
+  final inside = <Set<String>>[];
+  final outside = <Set<String>>[];
+  for (final d in a.activeDocuments) {
+    if (d.typeId != typeId || d.content.isEmpty) continue;
+    final words = weightedVector(d.content, Idf.of(a)).keys.toSet();
+    if (d.storagePathId == p.id) {
+      inside.add(words);
+    } else {
+      outside.add(words);
+    }
   }
-  d.storagePathId = pathId;
-  return true;
+  if (inside.isEmpty) return const {};
+  final df = <String, int>{};
+  for (final w in inside) {
+    for (final x in w) {
+      df[x] = (df[x] ?? 0) + 1;
+    }
+  }
+  final out = <String, double>{};
+  df.forEach((w, n) {
+    final fin = n / inside.length;
+    final fout = outside.isEmpty ? 0.0 : outside.where((o) => o.contains(w)).length / outside.length;
+    final score = fin - fout;
+    if (score >= 0.4 && w.length >= 3) out[w] = score;
+  });
+  final top = out.entries.toList()..sort((x, y) => y.value.compareTo(x.value));
+  return Map.fromEntries(top.take(15));
+}
+
+/// Quanto il documento corrisponde al profilo della sottocartella (0..1).
+double folderMatch(Map<String, double> profile, Document d) {
+  if (profile.isEmpty) return 0;
+  final words = termVector(d.content).keys.toSet();
+  var got = 0.0, total = 0.0;
+  profile.forEach((w, s) {
+    total += s;
+    if (words.contains(w)) got += s;
+  });
+  return total == 0 ? 0 : got / total;
+}
+
+/// Sceglie la sottocartella imparata per un documento nuovo: se è sicura la
+/// assegna; se è in bilico la propone ([Document.suggestedPathId]) perché
+/// l'app ne chieda conferma (con [ask] falso decide da sola).
+SubfolderDecision applySubfolder(Archive a, Document d, {bool ask = true, String? aiHint}) {
+  if (d.storagePathId != null || d.typeId == null) return SubfolderDecision.none;
+  // Quasi uguale a un documento che hai messo tu in una sottocartella.
+  final (example, score) = correctedExample(a, d, min: 0.6);
+  final exPath = a.storagePath(example?.storagePathId);
+  if (example != null &&
+      exPath != null &&
+      exPath.id != healthPathId &&
+      example.typeId == d.typeId &&
+      learnedPathFits(a, exPath, d) &&
+      (d.correspondentId == null ||
+          example.correspondentId == null ||
+          d.correspondentId == example.correspondentId ||
+          score >= 0.8)) {
+    d.storagePathId = exPath.id;
+    return SubfolderDecision.assigned;
+  }
+  // Le parole tipiche delle tue sottocartelle (e il suggerimento dell'AI).
+  StoragePath? best;
+  var bestScore = 0.0;
+  for (final p in a.activeStoragePaths) {
+    if (!isLearnedPath(p) || !learnedPathFits(a, p, d)) continue;
+    var s = folderMatch(folderProfile(a, p, d.typeId!), d);
+    if (aiHint != null && normalize(p.name).contains(normalize(aiHint))) s += 0.3;
+    if (aiHint != null && normalize(aiHint).contains(normalize(p.name))) s += 0.3;
+    if (s > bestScore) {
+      bestScore = s;
+      best = p;
+    }
+  }
+  if (best == null) return SubfolderDecision.none;
+  if (bestScore >= 0.6 || (!ask && bestScore >= 0.4)) {
+    d.storagePathId = best.id;
+    return SubfolderDecision.assigned;
+  }
+  if (ask && bestScore >= 0.3) {
+    d.suggestedPathId = best.id;
+    return SubfolderDecision.ask;
+  }
+  return SubfolderDecision.none;
 }
 
 /// Una sottocartella creata spostando i file (percorso senza

@@ -264,6 +264,19 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
             ),
             const Divider(height: 32),
             Text('Apprendimento automatico', style: theme.textTheme.titleMedium),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Chiedimi quando non è sicura'),
+              subtitle: const Text(
+                'Solo nei casi in bilico (categoria, persona, tue sottocartelle). '
+                'Spento: decide sempre da sola, come Paperless.',
+              ),
+              value: !app.settings.neverAsk,
+              onChanged: (v) {
+                app.settings.neverAsk = !v;
+                app.saveSettings();
+              },
+            ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: app.training

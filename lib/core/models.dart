@@ -297,6 +297,7 @@ class Document with Syncable {
     this.fileRev = 0,
     this.userEdited = false,
     this.titleEdited = false,
+    this.suggestedPathId,
     List<HistoryEntry>? history,
     int? modified,
     this.deleted = false,
@@ -383,6 +384,9 @@ class Document with Syncable {
   /// Corretto a mano dall'utente: vale come esempio per l'apprendimento.
   bool userEdited;
 
+  /// Sottocartella proposta quando l'app non è sicura (si chiede all'utente).
+  String? suggestedPathId;
+
   /// Titolo scelto a mano dall'utente: l'app impara come rinominare i simili.
   bool titleEdited;
 
@@ -432,6 +436,7 @@ class Document with Syncable {
         if (storagePathId != null) 'path': storagePathId,
         if (fileRev > 0) 'rev': fileRev,
         if (userEdited) 'ue': true,
+        if (suggestedPathId != null) 'sp': suggestedPathId,
         if (titleEdited) 'te': true,
         if (history.isNotEmpty) 'hist': history.map((h) => h.toJson()).toList(),
         'mod': modified,
@@ -470,6 +475,7 @@ class Document with Syncable {
         storagePathId: j['path'] as String?,
         fileRev: (j['rev'] as num?)?.toInt() ?? 0,
         userEdited: j['ue'] as bool? ?? false,
+        suggestedPathId: j['sp'] as String?,
         titleEdited: j['te'] as bool? ?? false,
         history: ((j['hist'] as List?) ?? const [])
             .map((h) => HistoryEntry.fromJson((h as Map).cast<String, dynamic>()))

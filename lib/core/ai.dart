@@ -28,6 +28,7 @@ class AiResult {
     this.person,
     this.specialty,
     this.healthKind,
+    this.subfolder,
   });
 
   final String? category;
@@ -44,6 +45,9 @@ class AiResult {
   /// Per i documenti sanitari: specialità e referto/prescrizione.
   final String? specialty;
   final String? healthKind;
+
+  /// Una delle sottocartelle create dall'utente, se il documento ci va.
+  final String? subfolder;
 
   bool get isEmpty =>
       category == null && kind == null && title == null && sender == null && date == null;
@@ -86,13 +90,20 @@ String buildAiPrompt(Archive a, Document d, {int maxChars = 5000}) {
     ..writeln('"tag": lista di tag esistenti adatti (anche vuota);')
     ..writeln('"persona": a chi è intestato o chi riguarda (paziente, intestatario), scelto tra le persone della famiglia, oppure null;')
     ..writeln('"specialita": solo per documenti sanitari, la specialità medica (es. "Cardiologia", "Analisi di laboratorio", "Dentista"), altrimenti null;')
-    ..writeln('"tipo_sanitario": solo per documenti sanitari, "Referto", "Prescrizione" o "Altro", altrimenti null.')
+    ..writeln('"tipo_sanitario": solo per documenti sanitari, "Referto", "Prescrizione" o "Altro", altrimenti null;')
+    ..writeln('"sottocartella": una delle sottocartelle elencate se il documento ci va chiaramente, altrimenti null.')
     ..writeln()
     ..writeln('Categorie esistenti: ${cats.isEmpty ? '(nessuna)' : cats.join(', ')}');
   if (senders.isNotEmpty) b.writeln('Mittenti già in archivio: ${senders.join(', ')}');
   if (tags.isNotEmpty) b.writeln('Tag esistenti: ${tags.join(', ')}');
   final people = a.config.people.map((p) => p.aliases.isEmpty ? p.name : '${p.name} (${p.aliases.where((x) => !RegExp(r'\d').hasMatch(x)).join(', ')})').toList();
   if (people.isNotEmpty) b.writeln('Persone della famiglia: ${people.join('; ')}');
+  final subs = [
+    for (final p in a.activeStoragePaths)
+      if (p.algorithm == MatchAlgorithm.none && !p.template.split('/').first.contains('{'))
+        '${p.template.split('/').first}: ${p.name}',
+  ];
+  if (subs.isNotEmpty) b.writeln('Sottocartelle create dall\'utente: ${subs.join('; ')}');
   b
     ..writeln('Nome del file: ${d.originalName}')
     ..writeln()
@@ -200,6 +211,7 @@ AiResult? parseAiResponse(String raw, {DateTime? now}) {
     person: _str(pick(['persona', 'person', 'intestatario', 'paziente']), max: 60),
     specialty: _str(pick(['specialita', 'specialty', 'specializzazione']), max: 40),
     healthKind: _str(pick(['tiposanitario', 'healthkind', 'tipodocumentosanitario']), max: 30),
+    subfolder: _str(pick(['sottocartella', 'subfolder', 'cartella']), max: 60),
   );
   return r.isEmpty ? null : r;
 }

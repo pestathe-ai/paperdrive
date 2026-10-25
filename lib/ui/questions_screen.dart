@@ -96,6 +96,9 @@ class ReviewCard extends StatelessWidget {
                       label: Text(switch (q.kind) {
                         QuestionKind.person => o.isEmpty ? 'Di tutta la casa' : o,
                         QuestionKind.category => a.type(o)?.name ?? o,
+                        QuestionKind.folder => o.isEmpty
+                            ? 'No, cartella normale'
+                            : 'Sì: ${(a.storagePath(o)?.template.split('/').first ?? '')} › ${a.storagePath(o)?.name ?? ''}',
                       }),
                       onPressed: app.readOnly ? null : () => app.answerQuestion(q, o),
                     ),

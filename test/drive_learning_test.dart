@@ -113,4 +113,43 @@ void main() {
     final asilo = Document(title: 'Asilo', typeId: 'st-scuola', created: DateTime(2026))..storagePathId = p.id;
     expect(drivePath(a, asilo).$1, ['Scuola e studio', '2026']);
   });
+
+  group('sottocartelle intelligenti', () {
+    Archive withBox() {
+      final a = archive();
+      // Altri documenti di Casa, senza sottocartella.
+      for (final t in ['condominio verbale assemblea scale ascensore', 'condominio riscaldamento caldaia appartamento', 'mutuo appartamento rata banca']) {
+        final o = Document(title: t, content: t, typeId: 'st-casa', created: DateTime(2026));
+        a.documents[o.id] = o;
+      }
+      final box = Document(title: 'Rata box', content: 'condominio box auto posto via roma garage rata', typeId: 'st-casa', created: DateTime(2026, 3));
+      a.documents[box.id] = box;
+      applyFolderCorrection(a, box, folders: ['Casa', 'Lavori condominiali', '2026', 'Box']);
+      return a;
+    }
+
+    test('mittente diverso ma parla del box: va nella sottocartella', () {
+      final a = withBox();
+      final idraulico = Document(title: 'Fattura idraulico', content: 'fattura idraulico riparazione garage box posto auto via roma', typeId: 'st-casa', created: DateTime(2026, 6))
+        ..correspondentId = 'idraulico';
+      expect(applySubfolder(a, idraulico), SubfolderDecision.assigned);
+      expect(drivePath(a, idraulico).$1, ['Casa', 'Lavori condominiali', '2026', 'Box']);
+    });
+
+    test('in bilico: chiede, oppure decide da sola se non deve chiedere', () {
+      final a = withBox();
+      Document dubbio() => Document(title: 'x', content: 'preventivo lavori garage box auto condominio tinteggiatura', typeId: 'st-casa', created: DateTime(2026, 6));
+      final d = dubbio();
+      expect(applySubfolder(a, d), SubfolderDecision.ask);
+      expect(d.suggestedPathId, isNotNull);
+      expect(d.storagePathId, isNull);
+    });
+
+    test('non c\'entra: resta nella cartella normale', () {
+      final a = withBox();
+      final d = Document(title: 'x', content: 'assicurazione casa incendio furto polizza', typeId: 'st-casa', created: DateTime(2026, 6));
+      expect(applySubfolder(a, d), SubfolderDecision.none);
+      expect(drivePath(a, d).$1, ['Casa', '2026']);
+    });
+  });
 }

@@ -28,6 +28,9 @@ class Settings {
   /// restano su Drive e si scaricano quando si aprono).
   bool keepFilesLocal = false;
 
+  /// Non fare mai domande: decide sempre l'app (come Paperless).
+  bool neverAsk = false;
+
   /// Cartella Drive dell'archivio (la mia o una condivisa con me).
   String? driveFolderId;
   String? driveFolderOwner;
@@ -56,6 +59,7 @@ class Settings {
         'ai': aiEnabled,
         'autoImport': autoImport,
         'keepLocal': keepFilesLocal,
+        'neverAsk': neverAsk,
       };
 
   static Settings fromJson(Map<String, dynamic> j) => Settings()
@@ -75,7 +79,8 @@ class Settings {
     ..aiModel = j['aiModel'] as String?
     ..aiEnabled = j['ai'] as bool? ?? false
     ..autoImport = j['autoImport'] as bool? ?? false
-    ..keepFilesLocal = j['keepLocal'] as bool? ?? false;
+    ..keepFilesLocal = j['keepLocal'] as bool? ?? false
+    ..neverAsk = j['neverAsk'] as bool? ?? false;
 }
 
 /// File sul telefono: indice, impostazioni, PDF e anteprime.
