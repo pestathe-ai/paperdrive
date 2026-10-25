@@ -36,7 +36,7 @@ const String healthKindFieldId = 'cf-tiposan';
 const String healthTypeId = 'st-sanita';
 const String healthPathId = 'st-path-sanita';
 const String healthPathTemplate =
-    'Sanità/{persona}/{specialita}/{tipo_sanitario}/{created_year}/{mese}/{created} {title}';
+    'Sanità/{persona}/{specialita}/{tipo_sanitario}/{created_year}/{mese}/{title} {data}';
 
 /// Categorie che riguardano tutta la casa: niente cartella per persona.
 const Set<String> defaultSharedTypeIds = {'st-bolletta', 'st-casa'};
@@ -53,6 +53,13 @@ int ensurePeopleEntities(Archive a) {
     if (a.fields.containsKey(id)) continue;
     a.fields[id] = CustomField(id: id, name: name, modified: 1);
     n++;
+  }
+  // Data alla fine del nome del file invece che all'inizio (versioni < 0.13).
+  for (final p in a.storagePaths.values) {
+    if (p.template.endsWith('/{created} {title}')) {
+      p.template = '${p.template.substring(0, p.template.length - '{created} {title}'.length)}{title} {data}';
+      n++;
+    }
   }
   if (!a.storagePaths.containsKey(healthPathId)) {
     a.storagePaths[healthPathId] = StoragePath(

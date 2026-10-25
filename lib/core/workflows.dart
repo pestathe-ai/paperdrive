@@ -256,7 +256,21 @@ const Map<String, String> titlePlaceholders = {
   '{specialita}': 'specialità medica',
   '{tipo_sanitario}': 'Referti, Prescrizioni o Altro',
   '{mese}': 'mese per cartelle (03 Marzo)',
+  '{data}': 'data del documento (05-03-2026), se non è già nel titolo',
 };
+
+/// Il titolo contiene già la data del documento (in qualsiasi forma
+/// comune)? Così nel nome del file non compare due volte.
+bool titleHasDate(Document d) {
+  final c = d.created;
+  final y = '${c.year}', m = _two(c.month), dd = _two(c.day);
+  final t = d.title;
+  for (final sep in ['-', '/', '.', '_', ' ']) {
+    if (t.contains('$dd$sep$m$sep$y') || t.contains('$y$sep$m$sep$dd')) return true;
+    if (t.contains('${c.day}$sep${c.month}$sep$y')) return true;
+  }
+  return false;
+}
 
 /// Valori dei segnaposti per un documento. Con [facts] legge anche dal
 /// testo tipo specifico, dettagli e importo (più lento).
@@ -292,6 +306,7 @@ Map<String, String> placeholderValues(Archive a, Document d, {bool facts = false
     '{specialita}': d.customFields[specialtyFieldId] ?? '',
     '{tipo_sanitario}': d.customFields[healthKindFieldId] ?? '',
     '{mese}': monthFolder(d.created),
+    '{data}': titleHasDate(d) ? '' : '${_two(d.created.day)}-${_two(d.created.month)}-${d.created.year}',
     if (f != null) '{kind}': f.label ?? a.type(d.typeId)?.name ?? '',
     if (f != null) '{details}': f.details,
     if (f != null) '{amount}': f.amountUseful ? f.amount! : '',

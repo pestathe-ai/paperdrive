@@ -329,7 +329,7 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Cartelle e nome del file',
-                helperText: 'Es. {document_type}/{created_year}/{created} {title}',
+                helperText: 'Es. {document_type}/{persona}/{created_year}/{title} {data}',
                 border: OutlineInputBorder(),
               ),
             ),

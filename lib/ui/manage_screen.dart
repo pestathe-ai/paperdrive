@@ -233,7 +233,7 @@ class ManageScreen extends StatelessWidget {
         _open(
           context,
           StoragePathEditor(
-            path: StoragePath(name: '', template: '{correspondent}/{created_year}/{created} {title}'),
+            path: StoragePath(name: '', template: '{correspondent}/{created_year}/{title} {data}'),
             isNew: true,
           ),
         );

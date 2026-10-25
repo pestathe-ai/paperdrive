@@ -456,13 +456,13 @@ void main() {
       d.title = autoTitle(a, d)!;
       expect(d.title, 'Bolletta - Enel');
       expect(drivePath(a, d).$1, ['Bolletta', '2024']);
-      expect(drivePath(a, d).$2, '2024-03-05 Bolletta - Enel');
-      expect(driveFileName(a, d, archived: true), '2024-03-05 Bolletta - Enel (PDF-A).pdf');
+      expect(drivePath(a, d).$2, 'Bolletta - Enel 05-03-2024');
+      expect(driveFileName(a, d, archived: true), 'Bolletta - Enel 05-03-2024 (PDF-A).pdf');
 
       final x = Document(title: 'A/B: prova?', created: DateTime(2023, 1, 9));
       expect(autoTitle(a, x), isNull);
       expect(drivePath(a, x).$1, ['Senza categoria', '2023']);
-      expect(drivePath(a, x).$2, '2023-01-09 A-B prova');
+      expect(drivePath(a, x).$2, 'A-B prova 09-01-2023');
       x.inTrash = true;
       expect(drivePath(a, x).$1, ['Cestino', 'Senza categoria', '2023']);
 

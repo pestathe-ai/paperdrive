@@ -39,6 +39,7 @@ String titleFromDriveName(String name) {
   t = t.replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '');
   t = t.replaceFirst(RegExp(r'\s*\(PDF-A\)$'), '');
   t = t.replaceFirst(RegExp(r'^\d{4}-\d{2}-\d{2}\s+'), '');
+  t = t.replaceFirst(RegExp(r'\s+(\d{2}-\d{2}-\d{4}|\d{4}-\d{2}-\d{2})$'), '');
   return t.trim();
 }
 
@@ -60,7 +61,9 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
   }
 
   if (folders != null) {
-    final segs = folders.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    var segs = folders.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    // Rimesso in "Da importare": non è una categoria, si ignora lo spostamento.
+    if (segs.isNotEmpty && normalize(segs.first) == 'da importare') segs = const [];
     if (segs.isNotEmpty && normalize(segs.first) == 'cestino') {
       if (!d.inTrash) {
         d
@@ -141,7 +144,7 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
         }
       } else {
         // Sottocartella personale: diventa un percorso che l'app impara.
-        final tpl = '${template.join('/')}/{created} {title}';
+        final tpl = '${template.join('/')}/{title} {data}';
         var path = a.activeStoragePaths.where((p) => p.template == tpl).firstOrNull;
         if (path == null) {
           path = StoragePath(name: custom.join(' / '), template: tpl, algorithm: MatchAlgorithm.auto);

@@ -431,14 +431,31 @@ class DriveSync {
         try {
           final trashed = await _listAll(
             api,
-            "properties has { key='pdArchive' and value='${_q(root)}' } and "
-            "properties has { key='pdKind' and value='orig' } and trashed = true",
+            "properties has { key='pdArchive' and value='${_q(root)}' } and trashed = true",
           );
           for (final f in trashed) {
             final name = _logicalName(f.properties);
             if (name == null || f.id == null || remoteFiles.containsKey(name)) continue;
             final d = merged.documents[docIdOfFile(name)];
-            if (d == null || d.deleted || d.inTrash || d.fileName != name) continue;
+            if (d == null || d.deleted || d.inTrash || !d.fileNames.contains(name)) continue;
+            // Spostato con "copia e cancella" (es. da computer): c'è una copia
+            // con lo stesso nome? Allora è uno spostamento, non una cancellazione.
+            final copies = (await _listAll(
+              api,
+              "name = '${_q(f.name ?? '')}' and trashed = false and mimeType != '$folderMime'",
+            ))
+                .where((c) => c.id != null && (c.properties ?? const {})['pdDoc'] == null)
+                .toList();
+            if (copies.isNotEmpty) {
+              final c = copies.first;
+              final props = <String, String?>{...?f.properties};
+              props['pdName'] ??= f.name;
+              props['pdParent'] ??= (f.parents ?? const []).firstOrNull;
+              await api.files.update(drive.File()..properties = props, c.id!, $fields: 'id');
+              remoteFiles[name] = _Remote(c.id!, c.name ?? '', c.parents ?? const [], c.version, true, props);
+              continue;
+            }
+            if (name != d.fileName) continue; // la copia PDF/A si ricarica da sola
             await api.files.update(drive.File()..trashed = false, f.id!, $fields: 'id');
             remoteFiles[name] = _Remote(f.id!, f.name ?? '', f.parents ?? const [], f.version, true, f.properties ?? const {});
             d
@@ -506,6 +523,7 @@ class DriveSync {
       }
 
       // Spostamenti e nomi cambiati a mano su Drive: correzioni da imparare.
+      final outside = <String>{};
       if (canWrite) {
         for (final d in merged.documents.values) {
           if (d.deleted) continue;
@@ -519,7 +537,11 @@ class DriveSync {
           if (!renamed && !moved) continue;
           try {
             final folders = moved ? await _pathFromRoot(api, root, r.parents.first) : null;
-            if (moved && folders == null) continue; // portato fuori dall'archivio: si lascia stare
+            if (moved && folders == null) {
+              // Portato fuori dalla cartella dell'archivio: resta dove l'hai messo.
+              outside.add(d.id);
+              continue;
+            }
             final before = d.toJson();
             final changes = applyFolderCorrection(
               merged,
@@ -540,7 +562,7 @@ class DriveSync {
       // Ogni file nella sua cartella (categoria/anno) e con il nome giusto.
       if (canWrite) {
         for (final d in merged.documents.values) {
-          if (d.deleted) continue;
+          if (d.deleted || outside.contains(d.id)) continue;
           for (final name in d.fileNames) {
             final r = remoteFiles[name];
             if (r == null) continue;
@@ -648,7 +670,9 @@ class DriveSync {
             if (f.id == null) continue;
             if (f.mimeType == folderMime) {
               if (path.length < 8) await walk(f.id!, [...path, f.name ?? '']);
-            } else {
+            } else if ((f.properties ?? const {})['pdDoc'] == null) {
+              // I file dell'archivio rimessi qui non si importano di nuovo:
+              // la sincronizzazione li riporta al loro posto.
               out.add(InboxFile(f.id!, f.name ?? 'documento', path, mimeType: f.mimeType));
             }
           }

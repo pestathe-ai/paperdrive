@@ -54,7 +54,7 @@ void main() {
       applyPeople(a, d);
       final (folders, name) = drivePath(a, d);
       expect(folders, ['Sanità', 'Maria', 'Cardiologia', 'Referti', '2026', '03 Marzo']);
-      expect(name, '2026-03-12 Ecocardiogramma San Gerardo');
+      expect(name, 'Ecocardiogramma San Gerardo 12-03-2026');
     });
 
     test('lavoro per persona, bollette comuni', () {

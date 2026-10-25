@@ -16,6 +16,7 @@ void main() {
   test('titolo dal nome del file', () {
     expect(titleFromDriveName('2026-03-05 Bolletta luce Enel.pdf'), 'Bolletta luce Enel');
     expect(titleFromDriveName('Spese box (PDF-A).pdf'), 'Spese box');
+    expect(titleFromDriveName('Bolletta luce Enel 05-03-2026 (PDF-A).pdf'), 'Bolletta luce Enel');
   });
 
   test('sottocartella personale: diventa un percorso', () {
@@ -27,7 +28,7 @@ void main() {
     expect(d.userEdited, isTrue);
     final (folders, name) = drivePath(a, d);
     expect(folders, ['Casa', 'Box via Roma', '2026']);
-    expect(name, '2026-04-02 Spese condominiali box');
+    expect(name, 'Spese condominiali box 02-04-2026');
     // Un altro anno va nella cartella dell'anno giusto.
     d.created = DateTime(2027, 1, 10);
     expect(drivePath(a, d).$1, ['Casa', 'Box via Roma', '2027']);
@@ -65,5 +66,13 @@ void main() {
     expect(d.storagePathId, healthPathId);
     expect(d.customFields[specialtyFieldId], 'Cardiologia');
     expect(drivePath(a, d).$1, ['Sanità', 'Maria', 'Cardiologia', 'Referti', '2026', '03 Marzo']);
+  });
+
+  test('data alla fine, mai due volte', () {
+    final a = archive();
+    final d = Document(title: 'Etichetta Vinted 11-10-2026', created: DateTime(2026, 10, 11), typeId: 'st-garanzia');
+    expect(drivePath(a, d).$2, 'Etichetta Vinted 11-10-2026');
+    d.title = 'Etichetta Vinted';
+    expect(drivePath(a, d).$2, 'Etichetta Vinted 11-10-2026');
   });
 }
