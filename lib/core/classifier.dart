@@ -372,7 +372,12 @@ class DocumentClassifier {
     bool auto(Matchable? m) => m != null;
     final labelsCorr = [for (final d in docs) auto(a.correspondent(d.correspondentId)) ? d.correspondentId : null];
     final labelsType = [for (final d in docs) auto(a.type(d.typeId)) ? d.typeId : null];
-    final labelsPath = [for (final d in docs) auto(a.storagePath(d.storagePathId)) ? d.storagePathId : null];
+    // Percorsi: solo quelli "Automatica" (le sottocartelle create spostando
+    // i file valgono solo per i documenti molto simili, non si indovinano).
+    final labelsPath = [
+      for (final d in docs)
+        a.storagePath(d.storagePathId)?.algorithm == MatchAlgorithm.auto ? d.storagePathId : null,
+    ];
     final autoTags = a.activeTags.where((t) => !t.isInbox).map((t) => t.id).toSet();
     final labelsTags = [for (final d in docs) d.tagIds.where(autoTags.contains).toSet()];
 

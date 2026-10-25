@@ -124,7 +124,7 @@ const List<DocKind> documentKinds = [
 
   // --- Scuola
   DocKind('Pagella', 'st-scuola', ['pagella', 'scheda di valutazione', 'documento di valutazione', 'scrutinio']),
-  DocKind('Iscrizione scolastica', 'st-scuola', ['domanda di iscrizione', 'iscrizione al', 'iscrizione a.s']),
+  DocKind('Iscrizione scolastica', 'st-scuola', ['domanda di iscrizione', 'iscrizione al', 'iscrizione a.s', 'certificazione di iscrizione', 'iscrizione e pagamento', 'asilo nido', 'scuola dell\'infanzia', 'scuola materna', 'nido d\'infanzia', 'iscrizione all\'asilo']),
   DocKind('Diploma o laurea', 'st-scuola', ['diploma di', 'certificato di laurea', 'diploma di laurea', 'conseguimento del titolo']),
   DocKind('Tasse universitarie', 'st-scuola', ['tasse universitarie', 'contribuzione studentesca', 'contributo onnicomprensivo']),
   DocKind('Retta scolastica', 'st-scuola', ['retta', 'mensa scolastica', 'servizi scolastici', 'pre-scuola']),

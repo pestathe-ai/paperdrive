@@ -94,7 +94,8 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
 
       // Le altre cartelle: anni, mesi, persona, specialità, referti… o
       // sottocartelle personali.
-      final template = <String>['{document_type}'];
+      // La categoria scritta per esteso: la sottocartella vale solo lì.
+      final template = <String>[type.name];
       final custom = <String>[];
       String? person;
       for (final s in segs.skip(1)) {
@@ -176,7 +177,8 @@ bool applyLearnedFolder(Archive a, Document d) {
   final (example, score) = correctedExample(a, d, min: 0.6);
   final pathId = example?.storagePathId;
   if (example == null || pathId == null || pathId == healthPathId) return false;
-  if (a.storagePath(pathId) == null || example.typeId != d.typeId) return false;
+  final path = a.storagePath(pathId);
+  if (path == null || example.typeId != d.typeId || !learnedPathFits(a, path, d)) return false;
   // Mittente diverso: serve una somiglianza molto alta.
   if (d.correspondentId != null &&
       example.correspondentId != null &&
@@ -185,5 +187,54 @@ bool applyLearnedFolder(Archive a, Document d) {
     return false;
   }
   d.storagePathId = pathId;
+  return true;
+}
+
+/// Una sottocartella creata spostando i file (percorso senza
+/// classificatore, con cartelle scritte per esteso).
+bool isLearnedPath(StoragePath p) =>
+    p.algorithm == MatchAlgorithm.none &&
+    p.template.split('/').any((seg) => seg.isNotEmpty && !seg.contains('{'));
+
+/// Una sottocartella imparata vale solo per la sua categoria: un documento
+/// di un'altra categoria non ci finisce (es. un'iscrizione all'asilo nella
+/// cartella del box).
+bool learnedPathFits(Archive a, StoragePath p, Document d) {
+  if (!isLearnedPath(p)) return true;
+  final first = p.template.split('/').first;
+  if (first.contains('{')) return true; // percorsi vecchi: vedi migrateLearnedPaths
+  final t = a.type(d.typeId);
+  return t != null && normalize(t.name) == normalize(first);
+}
+
+/// Percorsi imparati delle versioni precedenti ("{document_type}/…"): la
+/// categoria diventa quella dei documenti che ci hai messo tu.
+int migrateLearnedPaths(Archive a) {
+  var n = 0;
+  for (final p in a.storagePaths.values) {
+    if (p.deleted || !isLearnedPath(p) || !p.template.startsWith('{document_type}/')) continue;
+    final counts = <String, int>{};
+    for (final d in a.activeDocuments) {
+      if (d.storagePathId == p.id && d.userEdited && d.typeId != null) {
+        counts[d.typeId!] = (counts[d.typeId!] ?? 0) + 1;
+      }
+    }
+    if (counts.isEmpty) continue;
+    final best = counts.entries.reduce((x, y) => x.value >= y.value ? x : y).key;
+    final name = a.type(best)?.name;
+    if (name == null) continue;
+    p
+      ..template = '$name${p.template.substring('{document_type}'.length)}'
+      ..modified = nowMs();
+    n++;
+  }
+  return n;
+}
+
+/// Toglie le sottocartelle imparate che non c'entrano con la categoria.
+bool dropUnfitPath(Archive a, Document d) {
+  final p = a.storagePath(d.storagePathId);
+  if (p == null || learnedPathFits(a, p, d)) return false;
+  d.storagePathId = null;
   return true;
 }

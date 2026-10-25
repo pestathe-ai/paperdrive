@@ -89,4 +89,28 @@ void main() {
     final p = StoragePath.fromJson({'id': 'x', 'name': 'Box', 'tpl': '{document_type}/Box/{created_year}/{created} {title}'});
     expect(p.template, '{document_type}/Box/{created_year}/{title} {data}');
   });
+
+  test('una sottocartella imparata vale solo per la sua categoria', () {
+    final a = archive();
+    final box = Document(title: 'Rata box', content: 'condominio box rata', created: DateTime(2026, 5, 1), typeId: 'st-casa');
+    a.documents[box.id] = box;
+    applyFolderCorrection(a, box, folders: ['Casa', 'Lavori condominiali', '2026', 'Box']);
+    final asilo = Document(title: 'Iscrizione asilo', content: 'asilo nido iscrizione', created: DateTime(2026, 5, 25), typeId: 'st-scuola')
+      ..storagePathId = box.storagePathId;
+    expect(drivePath(a, asilo).$1, ['Scuola e studio', '2026']);
+    expect(dropUnfitPath(a, asilo), isTrue);
+    expect(asilo.storagePathId, isNull);
+  });
+
+  test('i vecchi percorsi imparati prendono la categoria dei tuoi documenti', () {
+    final a = archive();
+    final p = StoragePath(name: 'Box', template: '{document_type}/{created_year}/Box/{title} {data}');
+    a.storagePaths[p.id] = p;
+    final d = Document(title: 'Rata', typeId: 'st-casa', userEdited: true, created: DateTime(2026))..storagePathId = p.id;
+    a.documents[d.id] = d;
+    expect(migrateLearnedPaths(a), 1);
+    expect(p.template, startsWith('Casa/'));
+    final asilo = Document(title: 'Asilo', typeId: 'st-scuola', created: DateTime(2026))..storagePathId = p.id;
+    expect(drivePath(a, asilo).$1, ['Scuola e studio', '2026']);
+  });
 }

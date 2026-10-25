@@ -107,6 +107,7 @@ class AppState extends ChangeNotifier {
     if (archive.activeTypes.isEmpty || archive.types.keys.any((k) => k.startsWith('st-'))) {
       addStarterEntities(archive);
       ensurePeopleEntities(archive);
+      migrateLearnedPaths(archive);
       await storage.saveArchive(archive);
     }
     await storage.clearTmp();
@@ -471,6 +472,7 @@ class AppState extends ChangeNotifier {
     if (folders != null) applyFolderHint(archive, doc, folders);
     applyPeople(archive, doc, aiPerson: ai?.person, aiSpecialty: ai?.specialty, aiHealthKind: ai?.healthKind);
     if (folders == null) applyLearnedFolder(archive, doc);
+    dropUnfitPath(archive, doc);
     if (asn != null) {
       doc.asn = asn;
     } else if (settings.autoAsn) {
@@ -694,6 +696,7 @@ class AppState extends ChangeNotifier {
       applyKindCategory(archive, d);
       applyPeople(archive, d);
       applyLearnedFolder(archive, d);
+      dropUnfitPath(archive, d);
       if (retitle) _guessCorrespondent(d);
       if (retitle) {
         final t = autoTitle(archive, d);

@@ -3,6 +3,7 @@
 library;
 
 import 'archive.dart';
+import 'drive_learning.dart' show learnedPathFits;
 import 'extract.dart';
 import 'matching.dart' show Idf, cosine, matchText, weightedVector;
 import 'models.dart';
@@ -155,7 +156,8 @@ String safeName(String s, {int max = 100}) {
 
 /// Modello di percorso usato per il documento.
 String pathTemplateFor(Archive a, Document d) {
-  final p = a.storagePath(d.storagePathId);
+  var p = a.storagePath(d.storagePathId);
+  if (p != null && !learnedPathFits(a, p, d)) p = null;
   final t = (p?.template ?? a.config.pathTemplate).trim();
   return t.isEmpty ? ArchiveConfig.defaultPathTemplate : t;
 }
