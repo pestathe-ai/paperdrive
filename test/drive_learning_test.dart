@@ -75,4 +75,18 @@ void main() {
     d.title = 'Etichetta Vinted';
     expect(drivePath(a, d).$2, 'Etichetta Vinted 11-10-2026');
   });
+
+  test('data all\'inizio del titolo spostata alla fine', () {
+    final a = archive();
+    final d = Document(title: '2023-05-12 Verbale assemblea', created: DateTime(2023, 5, 12), typeId: 'st-casa');
+    expect(drivePath(a, d).$2, 'Verbale assemblea 12-05-2023');
+    d.title = '12.05.2023_Verbale assemblea';
+    expect(drivePath(a, d).$2, 'Verbale assemblea 12-05-2023');
+    expect(titleFromDriveName('20230512 Verbale.pdf'), 'Verbale');
+  });
+
+  test('vecchi percorsi con la data davanti vengono aggiornati', () {
+    final p = StoragePath.fromJson({'id': 'x', 'name': 'Box', 'tpl': '{document_type}/Box/{created_year}/{created} {title}'});
+    expect(p.template, '{document_type}/Box/{created_year}/{title} {data}');
+  });
 }

@@ -184,8 +184,12 @@ String pathTemplateFor(Archive a, Document d) {
 /// Nome completo su Drive per un file del documento (originale o PDF/A).
 String driveFileName(Archive a, Document d, {required bool archived}) {
   final (_, name) = drivePath(a, d);
-  return archived ? '$name (PDF-A).pdf' : '$name.pdf';
+  return '$name.pdf';
 }
+
+/// Le copie ricercabili PDF/A stanno in una cartella a parte, con la stessa
+/// struttura: nelle cartelle dei documenti c'è un solo file per documento.
+const String pdfaFolderName = 'PDF-A';
 
 // ---------------------------------------------------------------------------
 // Cronologia

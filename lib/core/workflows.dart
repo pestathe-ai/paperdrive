@@ -259,12 +259,20 @@ const Map<String, String> titlePlaceholders = {
   '{data}': 'data del documento (05-03-2026), se non è già nel titolo',
 };
 
+/// Toglie una data all'inizio del titolo ("2023-05-12 Verbale",
+/// "12.05.2023_Verbale", "20230512 Verbale" → "Verbale").
+String stripLeadingDate(String t) {
+  final out = t.replaceFirst(
+    RegExp(r'^\s*(\d{4}[-_.]\d{1,2}[-_.]\d{1,2}|\d{1,2}[-_.]\d{1,2}[-_.]\d{4}|(19|20)\d{6})[\s_\-–]+'),
+    '',
+  );
+  return out.trim().isEmpty ? t : out.trim();
+}
+
 /// Il titolo contiene già la data del documento (in qualsiasi forma
 /// comune)? Così nel nome del file non compare due volte.
-bool titleHasDate(Document d) {
-  final c = d.created;
+bool titleHasDate(String t, DateTime c) {
   final y = '${c.year}', m = _two(c.month), dd = _two(c.day);
-  final t = d.title;
   for (final sep in ['-', '/', '.', '_', ' ']) {
     if (t.contains('$dd$sep$m$sep$y') || t.contains('$y$sep$m$sep$dd')) return true;
     if (t.contains('${c.day}$sep${c.month}$sep$y')) return true;
@@ -280,8 +288,11 @@ Map<String, String> placeholderValues(Archive a, Document d, {bool facts = false
   var name = d.originalName;
   final dot = name.lastIndexOf('.');
   if (dot > 0) name = name.substring(0, dot);
+  // Una data all'inizio del titolo (es. da un nome di file "2023-05-12
+  // Verbale") va tolta: nel nome del file la data sta alla fine.
+  final title = stripLeadingDate(d.title);
   return <String, String>{
-    '{title}': d.title,
+    '{title}': title,
     '{correspondent}': a.correspondent(d.correspondentId)?.name ?? '',
     '{document_type}': a.type(d.typeId)?.name ?? '',
     '{created}': dateOnly(d.created),
@@ -306,7 +317,7 @@ Map<String, String> placeholderValues(Archive a, Document d, {bool facts = false
     '{specialita}': d.customFields[specialtyFieldId] ?? '',
     '{tipo_sanitario}': d.customFields[healthKindFieldId] ?? '',
     '{mese}': monthFolder(d.created),
-    '{data}': titleHasDate(d) ? '' : '${_two(d.created.day)}-${_two(d.created.month)}-${d.created.year}',
+    '{data}': titleHasDate(title, d.created) ? '' : '${_two(d.created.day)}-${_two(d.created.month)}-${d.created.year}',
     if (f != null) '{kind}': f.label ?? a.type(d.typeId)?.name ?? '',
     if (f != null) '{details}': f.details,
     if (f != null) '{amount}': f.amountUseful ? f.amount! : '',

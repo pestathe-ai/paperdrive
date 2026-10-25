@@ -648,6 +648,10 @@ class HistoryEntry {
       );
 }
 
+String _dateAtEnd(String t) => t.endsWith('{created} {title}')
+    ? '${t.substring(0, t.length - '{created} {title}'.length)}{title} {data}'
+    : t;
+
 /// Percorso di archiviazione su Drive (come gli "storage path" di Paperless):
 /// cartelle e nome del file costruiti dai dati del documento.
 class StoragePath with Syncable implements Matchable {
@@ -696,7 +700,8 @@ class StoragePath with Syncable implements Matchable {
   factory StoragePath.fromJson(Map<String, dynamic> j) => StoragePath(
         id: j['id'] as String,
         name: j['name'] as String? ?? '',
-        template: j['tpl'] as String? ?? '',
+        // Dalla v0.13 la data va alla fine del nome del file.
+        template: _dateAtEnd(j['tpl'] as String? ?? ''),
         algorithm: _algo(j['algo']),
         pattern: j['pattern'] as String? ?? '',
         caseInsensitive: j['ci'] as bool? ?? true,

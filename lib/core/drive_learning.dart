@@ -12,6 +12,7 @@ import 'archive.dart';
 import 'models.dart';
 import 'organize.dart' show drivePath;
 import 'people.dart';
+import 'workflows.dart' show stripLeadingDate;
 import 'text_utils.dart';
 
 final RegExp _yearRe = RegExp(r'^(19|20)\d{2}$');
@@ -38,7 +39,7 @@ String titleFromDriveName(String name) {
   var t = name.trim();
   t = t.replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '');
   t = t.replaceFirst(RegExp(r'\s*\(PDF-A\)$'), '');
-  t = t.replaceFirst(RegExp(r'^\d{4}-\d{2}-\d{2}\s+'), '');
+  t = stripLeadingDate(t);
   t = t.replaceFirst(RegExp(r'\s+(\d{2}-\d{2}-\d{4}|\d{4}-\d{2}-\d{2})$'), '');
   return t.trim();
 }
@@ -63,7 +64,7 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
   if (folders != null) {
     var segs = folders.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
     // Rimesso in "Da importare": non è una categoria, si ignora lo spostamento.
-    if (segs.isNotEmpty && normalize(segs.first) == 'da importare') segs = const [];
+    if (segs.isNotEmpty && const {'da importare', 'pdf-a'}.contains(normalize(segs.first))) segs = const [];
     if (segs.isNotEmpty && normalize(segs.first) == 'cestino') {
       if (!d.inTrash) {
         d

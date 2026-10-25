@@ -364,7 +364,8 @@ class DriveSync {
   ) async {
     final (folders, _) = drivePath(a, d);
     final name = driveFileName(a, d, archived: archived);
-    final parent = a.config.organizeDrive ? await _folderFor(api, root, folders) : root;
+    final segs = archived ? [pdfaFolderName, ...folders] : folders;
+    final parent = a.config.organizeDrive || archived ? await _folderFor(api, root, segs) : root;
     return (parent, name);
   }
 
