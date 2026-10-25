@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 
 import '../core/archive.dart';
+import '../core/drive_learning.dart' show applyFolderCorrection;
 import '../core/formats.dart';
 import '../core/import_hint.dart' show inboxFolderName;
 import '../core/models.dart';
@@ -28,6 +29,7 @@ class SyncOutcome {
     required this.downloaded,
     required this.removed,
     required this.organized,
+    this.learned = 0,
     required this.folderId,
     required this.canEdit,
     required this.ownerEmail,
@@ -40,6 +42,9 @@ class SyncOutcome {
 
   /// File rinominati o spostati nelle cartelle giuste.
   final int organized;
+
+  /// Documenti corretti a mano su Drive (spostati o rinominati).
+  final int learned;
   final String folderId;
   final bool canEdit;
   final String? ownerEmail;
@@ -85,8 +90,11 @@ class SharedFolder {
 
 /// Un file dell'archivio su Drive.
 class _Remote {
-  _Remote(this.id, this.name, this.parents, this.version, this.tagged);
+  _Remote(this.id, this.name, this.parents, this.version, this.tagged, [this.props = const {}]);
   final String id;
+
+  /// Proprietà Paperdrive (pdName/pdParent: dove l'app l'ha messo l'ultima volta).
+  final Map<String, String?> props;
   final String name;
   final List<String> parents;
   final String? version;
@@ -227,7 +235,7 @@ class DriveSync {
     for (final f in tagged) {
       final name = _logicalName(f.properties);
       if (name == null || f.id == null) continue;
-      out[name] = _Remote(f.id!, f.name ?? '', f.parents ?? const [], f.version, true);
+      out[name] = _Remote(f.id!, f.name ?? '', f.parents ?? const [], f.version, true, f.properties ?? const {});
     }
     _Remote? index;
     final top = await _listAll(api, "'${_q(root)}' in parents and trashed = false");
@@ -314,12 +322,37 @@ class DriveSync {
     return parent;
   }
 
-  Map<String, String> _props(String root, Document d, bool archived) => {
+  Map<String, String> _props(String root, Document d, bool archived, {String? name, String? parent}) => {
         'pdArchive': root,
         'pdDoc': d.id,
         'pdKind': archived ? 'arch' : 'orig',
         'pdRev': archived ? '${d.archiveRev}' : '${d.fileRev}',
+        // Dove l'app l'ha messo: se su Drive cambia, l'ha cambiato l'utente.
+        if (name != null) 'pdName': name,
+        if (parent != null) 'pdParent': parent,
       };
+
+  /// Cache delle cartelle: id → (nome, cartella madre).
+  final Map<String, (String, String?)> _folderInfo = {};
+
+  /// Le cartelle dalla principale ([root], esclusa) fino a [id].
+  Future<List<String>?> _pathFromRoot(drive.DriveApi api, String root, String id) async {
+    final out = <String>[];
+    var cur = id;
+    for (var i = 0; i < 12; i++) {
+      if (cur == root) return out.reversed.toList();
+      var info = _folderInfo[cur];
+      if (info == null) {
+        final f = await api.files.get(cur, $fields: 'id,name,parents') as drive.File;
+        info = (f.name ?? '', (f.parents ?? const []).firstOrNull);
+        _folderInfo[cur] = info;
+      }
+      out.add(info.$1);
+      if (info.$2 == null) return null; // fuori dall'archivio
+      cur = info.$2!;
+    }
+    return null;
+  }
 
   /// Dove deve stare un file su Drive: cartella e nome leggibile.
   Future<(String, String)> _placeOf(
@@ -351,6 +384,7 @@ class DriveSync {
   }) async {
     status?.call('Connessione a Google Drive…');
     _folders.clear();
+    _folderInfo.clear();
     final root = folderId ?? await _ownFolder(api);
     final drive.File info;
     try {
@@ -376,7 +410,7 @@ class DriveSync {
     final ownerEmail = owners.isEmpty ? null : owners.first.emailAddress;
 
     var current = local;
-    var uploaded = 0, removed = 0, organized = 0;
+    var uploaded = 0, removed = 0, organized = 0, learned = 0;
     final downloadedNames = <String>[];
     for (var attempt = 0; attempt < 3; attempt++) {
       var (remoteFiles, index) = await _remoteFiles(api, root);
@@ -390,6 +424,32 @@ class DriveSync {
       }
       final (merged, _) = mergeArchives(current, remote);
       current = merged;
+
+      // Documenti cestinati a mano su Drive: vanno nel cestino dell'app (il
+      // file torna nella cartella "Cestino" dell'archivio, recuperabile).
+      if (canWrite) {
+        try {
+          final trashed = await _listAll(
+            api,
+            "properties has { key='pdArchive' and value='${_q(root)}' } and "
+            "properties has { key='pdKind' and value='orig' } and trashed = true",
+          );
+          for (final f in trashed) {
+            final name = _logicalName(f.properties);
+            if (name == null || f.id == null || remoteFiles.containsKey(name)) continue;
+            final d = merged.documents[docIdOfFile(name)];
+            if (d == null || d.deleted || d.inTrash || d.fileName != name) continue;
+            await api.files.update(drive.File()..trashed = false, f.id!, $fields: 'id');
+            remoteFiles[name] = _Remote(f.id!, f.name ?? '', f.parents ?? const [], f.version, true, f.properties ?? const {});
+            d
+              ..inTrash = true
+              ..trashedAt = nowMs()
+              ..log('Spostato nel cestino (cancellato su Google Drive)')
+              ..touch();
+            learned++;
+          }
+        } catch (_) {}
+      }
 
       final plan = planFiles(
         merged,
@@ -410,7 +470,7 @@ class DriveSync {
           drive.File()
             ..name = driveName
             ..parents = [parent]
-            ..properties = _props(root, d, archived),
+            ..properties = _props(root, d, archived, name: driveName, parent: parent),
           uploadMedia: _media(bytes, 'application/pdf'),
           $fields: 'id',
         );
@@ -445,6 +505,38 @@ class DriveSync {
         removed++;
       }
 
+      // Spostamenti e nomi cambiati a mano su Drive: correzioni da imparare.
+      if (canWrite) {
+        for (final d in merged.documents.values) {
+          if (d.deleted) continue;
+          final r = remoteFiles[d.fileName];
+          if (r == null || !r.tagged) continue;
+          final lastName = r.props['pdName'];
+          final lastParent = r.props['pdParent'];
+          if (lastName == null || lastParent == null || r.parents.isEmpty) continue;
+          final renamed = r.name != lastName;
+          final moved = !r.parents.contains(lastParent);
+          if (!renamed && !moved) continue;
+          try {
+            final folders = moved ? await _pathFromRoot(api, root, r.parents.first) : null;
+            if (moved && folders == null) continue; // portato fuori dall'archivio: si lascia stare
+            final before = d.toJson();
+            final changes = applyFolderCorrection(
+              merged,
+              d,
+              folders: folders,
+              fileName: renamed ? r.name : null,
+            );
+            if (changes.isNotEmpty && logChanges(merged, before, d, via: 'Google Drive')) {
+              d.touch();
+              learned++;
+            }
+          } catch (_) {
+            // Una cartella illeggibile non blocca la sincronizzazione.
+          }
+        }
+      }
+
       // Ogni file nella sua cartella (categoria/anno) e con il nome giusto.
       if (canWrite) {
         for (final d in merged.documents.values) {
@@ -455,13 +547,16 @@ class DriveSync {
             final archived = name.contains('.archive');
             final (parent, driveName) = await _placeOf(api, merged, root, d, archived);
             final moved = !(r.parents.length == 1 && r.parents.first == parent);
-            if (r.name == driveName && !moved && r.tagged) continue;
+            if (r.name == driveName && !moved && r.tagged &&
+                r.props['pdName'] == driveName && r.props['pdParent'] == parent) {
+              continue;
+            }
             status?.call('Archiviazione: $driveName');
             try {
               await api.files.update(
                 drive.File()
                   ..name = driveName
-                  ..properties = _props(root, d, archived),
+                  ..properties = _props(root, d, archived, name: driveName, parent: parent),
                 r.id,
                 addParents: moved ? parent : null,
                 removeParents: moved && r.parents.isNotEmpty ? r.parents.join(',') : null,
@@ -514,6 +609,7 @@ class DriveSync {
       downloaded: downloadedNames.length,
       removed: removed,
       organized: organized,
+      learned: learned,
       folderId: root,
       canEdit: canWrite,
       ownerEmail: ownerEmail,

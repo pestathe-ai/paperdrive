@@ -13,6 +13,7 @@ import '../core/archive.dart';
 import '../core/assistant.dart';
 import '../core/classifier.dart';
 import '../core/dates.dart';
+import '../core/drive_learning.dart';
 import '../core/extract.dart' show detectIssuer;
 import '../core/formats.dart';
 import '../core/import_hint.dart';
@@ -462,6 +463,7 @@ class AppState extends ChangeNotifier {
     if (ai?.title != null && aiMayRetitle(archive, doc)) doc.title = ai!.title!;
     if (folders != null) applyFolderHint(archive, doc, folders);
     applyPeople(archive, doc, aiPerson: ai?.person, aiSpecialty: ai?.specialty, aiHealthKind: ai?.healthKind);
+    if (folders == null) applyLearnedFolder(archive, doc);
     if (asn != null) {
       doc.asn = asn;
     } else if (settings.autoAsn) {
@@ -673,6 +675,7 @@ class AppState extends ChangeNotifier {
       applyMatches(archive, d, overwrite: overwrite, classifier: classifier);
       applyKindCategory(archive, d);
       applyPeople(archive, d);
+      applyLearnedFolder(archive, d);
       if (retitle) _guessCorrespondent(d);
       if (retitle) {
         final t = autoTitle(archive, d);
@@ -818,6 +821,21 @@ class AppState extends ChangeNotifier {
     }
     final hits = runAsk(archive, q, searchIndex);
     return (q, hits, answerText(archive, q, hits));
+  }
+
+  /// Cambia la cartella del documento scrivendola (es. "Casa/Box via
+  /// Roma/2026"): categoria, persona e sottocartelle vengono capite e
+  /// imparate per i documenti simili.
+  List<String> setFolder(Document d, String path) {
+    final segs = path.split('/').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (segs.isEmpty) return const [];
+    final before = d.toJson();
+    final changes = applyFolderCorrection(archive, d, folders: segs);
+    if (changes.isNotEmpty && logChanges(archive, before, d, via: 'Cartella scelta a mano')) {
+      d.touch();
+      changed(entities: true);
+    }
+    return changes;
   }
 
   /// Domande aperte: documenti su cui l'app ha un dubbio.
@@ -1214,6 +1232,7 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }
       searchIndex.clear();
+      if (out.learned > 0) _scheduleTraining();
       await storage.saveArchive(archive);
       settings
         ..driveFolderId = out.folderId
@@ -1223,6 +1242,7 @@ class AppState extends ChangeNotifier {
         ..lastSyncError = null;
       await storage.saveSettings(settings);
       final parts = <String>[
+        if (out.learned > 0) '${out.learned} corretti su Drive (imparato)',
         if (out.organized > 0) '${out.organized} archiviati in cartelle',
         if (out.uploaded > 0) '${out.uploaded} caricati',
         if (out.downloaded > 0) '${out.downloaded} scaricati',

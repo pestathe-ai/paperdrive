@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../core/dates.dart' show findDates;
 import '../core/matching.dart' show computeMatches;
+import '../core/drive_learning.dart' show folderOf;
 import '../core/models.dart';
 import '../state/app_state.dart';
 import '../core/organize.dart' show drivePath, similarDocuments;
@@ -381,6 +382,33 @@ class _DocumentScreenState extends State<DocumentScreen> {
             d.typeId = r.id;
             app.saveDocument(d);
           },
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.folder_outlined),
+          title: const Text('Cartella su Drive'),
+          subtitle: Text(folderOf(a, d).isEmpty ? 'Cartella principale' : folderOf(a, d)),
+          trailing: const Icon(Icons.edit_outlined, size: 20),
+          onTap: app.readOnly
+              ? null
+              : () async {
+                  final v = await askText(
+                    context,
+                    title: 'Cartella su Drive',
+                    label: 'Es. Casa/Box via Roma/2026',
+                    initial: folderOf(a, d),
+                  );
+                  if (v == null) return;
+                  final changes = app.setFolder(d, v);
+                  if (context.mounted) {
+                    showMessage(
+                      context,
+                      changes.isEmpty
+                          ? 'Nessun cambiamento'
+                          : 'Fatto. I documenti simili andranno qui da soli.',
+                    );
+                  }
+                },
         ),
         ListTile(
           contentPadding: EdgeInsets.zero,
