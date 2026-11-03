@@ -343,6 +343,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               app.saveSettings();
             },
           ),
+          if (s.driveEnabled && !app.readOnly)
+            ListTile(
+              leading: const Icon(Icons.account_tree_outlined),
+              title: const Text('Riordina le cartelle su Drive'),
+              subtitle: const Text('Unisce le cartelle doppie e toglie quelle vuote (lo fa da sola una volta a settimana)'),
+              onTap: () async {
+                try {
+                  final n = await app.repairDriveFolders();
+                  if (context.mounted) showMessage(context, n == 0 ? 'Cartelle già in ordine' : 'Sistemate $n cartelle');
+                } catch (e) {
+                  if (context.mounted) showMessage(context, 'Non riuscito: $e');
+                }
+              },
+            ),
           if (!s.keepFilesLocal && s.driveEnabled)
             FutureBuilder<int>(
               future: app.storage.docsSize(),

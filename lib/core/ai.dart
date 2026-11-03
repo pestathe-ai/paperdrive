@@ -229,6 +229,13 @@ T? findByName<T extends Matchable>(Iterable<T> items, String name) {
   for (final e in items) {
     if (_key(e.name) == k) return e;
   }
+  // "Bollette" ↔ "Bolletta", "Sanita" ↔ "Sanità": stesse parole senza
+  // l'ultima vocale (singolare e plurale).
+  String stem(String s) => s.split(' ').map((w) => w.length > 3 ? w.replaceFirst(RegExp(r'[aeiou]$'), '') : w).join(' ');
+  final ks = stem(k);
+  for (final e in items) {
+    if (stem(_key(e.name)) == ks) return e;
+  }
   // "Enel Energia" ↔ "Enel": uno contenuto nell'altro, a parole intere.
   for (final e in items) {
     final ek = _key(e.name);

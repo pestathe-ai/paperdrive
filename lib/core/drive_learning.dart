@@ -66,6 +66,16 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
     var segs = folders.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
     // Rimesso in "Da importare": non è una categoria, si ignora lo spostamento.
     if (segs.isNotEmpty && const {'da importare', 'pdf-a'}.contains(normalize(segs.first))) segs = const [];
+    if (segs.isNotEmpty && normalize(segs.first) != 'cestino') {
+      // Il documento resta esattamente dove l'hai messo (anche se l'anno
+      // della cartella non è quello del documento).
+      final pin = [for (final s in segs) s];
+      final same = d.pinnedFolder != null && d.pinnedFolder!.join('/') == pin.join('/');
+      if (!same) {
+        d.pinnedFolder = pin;
+        changed.add('cartella');
+      }
+    }
     if (segs.isNotEmpty && normalize(segs.first) == 'cestino') {
       if (!d.inTrash) {
         d

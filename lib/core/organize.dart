@@ -179,7 +179,12 @@ String pathTemplateFor(Archive a, Document d) {
       .toList();
   var name = parts.isEmpty ? '' : parts.removeLast();
   if (name.isEmpty) name = safeName(d.title.isEmpty ? d.id : d.title);
-  final folders = parts.take(6).toList();
+  var folders = parts.take(6).toList();
+  // Cartella scelta a mano: si rispetta esattamente.
+  final pinned = d.pinnedFolder;
+  if (pinned != null && pinned.isNotEmpty) {
+    folders = pinned.map((p) => safeName(p)).where((p) => p.isNotEmpty).take(8).toList();
+  }
   if (d.inTrash) folders.insert(0, 'Cestino');
   return (folders, name);
 }

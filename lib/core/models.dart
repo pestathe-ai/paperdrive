@@ -298,6 +298,7 @@ class Document with Syncable {
     this.userEdited = false,
     this.titleEdited = false,
     this.suggestedPathId,
+    this.pinnedFolder,
     List<HistoryEntry>? history,
     int? modified,
     this.deleted = false,
@@ -387,6 +388,10 @@ class Document with Syncable {
   /// Sottocartella proposta quando l'app non è sicura (si chiede all'utente).
   String? suggestedPathId;
 
+  /// Cartella scelta a mano (spostando il file su Drive o scrivendola
+  /// nell'app): il documento resta esattamente lì, es. "Casa/2026/Box".
+  List<String>? pinnedFolder;
+
   /// Titolo scelto a mano dall'utente: l'app impara come rinominare i simili.
   bool titleEdited;
 
@@ -437,6 +442,7 @@ class Document with Syncable {
         if (fileRev > 0) 'rev': fileRev,
         if (userEdited) 'ue': true,
         if (suggestedPathId != null) 'sp': suggestedPathId,
+        if (pinnedFolder != null && pinnedFolder!.isNotEmpty) 'pf': pinnedFolder,
         if (titleEdited) 'te': true,
         if (history.isNotEmpty) 'hist': history.map((h) => h.toJson()).toList(),
         'mod': modified,
@@ -476,6 +482,7 @@ class Document with Syncable {
         fileRev: (j['rev'] as num?)?.toInt() ?? 0,
         userEdited: j['ue'] as bool? ?? false,
         suggestedPathId: j['sp'] as String?,
+        pinnedFolder: (j['pf'] as List?)?.map((e) => '$e').toList(),
         titleEdited: j['te'] as bool? ?? false,
         history: ((j['hist'] as List?) ?? const [])
             .map((h) => HistoryEntry.fromJson((h as Map).cast<String, dynamic>()))

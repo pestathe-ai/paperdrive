@@ -29,9 +29,13 @@ void main() {
     final (folders, name) = drivePath(a, d);
     expect(folders, ['Casa', 'Box via Roma', '2026']);
     expect(name, 'Spese condominiali box 02-04-2026');
-    // Un altro anno va nella cartella dell'anno giusto.
+    // Resta esattamente dove l'hai messo, anche cambiando la data.
     d.created = DateTime(2027, 1, 10);
-    expect(drivePath(a, d).$1, ['Casa', 'Box via Roma', '2027']);
+    expect(drivePath(a, d).$1, ['Casa', 'Box via Roma', '2026']);
+    // Un documento nuovo simile del 2027 va nella cartella del 2027.
+    final next = Document(title: 'Spese box 2027', content: d.content, created: DateTime(2027, 2, 1), typeId: 'st-casa')
+      ..storagePathId = d.storagePathId;
+    expect(drivePath(a, next).$1, ['Casa', 'Box via Roma', '2027']);
   });
 
   test('i documenti simili finiscono nella stessa sottocartella', () {
@@ -151,5 +155,13 @@ void main() {
       expect(applySubfolder(a, d), SubfolderDecision.none);
       expect(drivePath(a, d).$1, ['Casa', '2026']);
     });
+  });
+
+  test('cartelle con nome al plurale: stessa categoria', () {
+    final a = archive();
+    final d = Document(title: 'Luce', content: 'luce', created: DateTime(2026, 3, 5), typeId: 'st-bolletta');
+    applyFolderCorrection(a, d, folders: ['Bollette', '2026']);
+    expect(d.typeId, 'st-bolletta');
+    expect(a.activeTypes.where((t) => t.name == 'Bollette'), isEmpty);
   });
 }

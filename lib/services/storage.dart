@@ -31,6 +31,9 @@ class Settings {
   /// Non fare mai domande: decide sempre l'app (come Paperless).
   bool neverAsk = false;
 
+  /// Ultima riparazione delle cartelle su Drive (millisecondi).
+  int? lastRepair;
+
   /// Cartella Drive dell'archivio (la mia o una condivisa con me).
   String? driveFolderId;
   String? driveFolderOwner;
@@ -60,6 +63,7 @@ class Settings {
         'autoImport': autoImport,
         'keepLocal': keepFilesLocal,
         'neverAsk': neverAsk,
+        'repair': lastRepair,
       };
 
   static Settings fromJson(Map<String, dynamic> j) => Settings()
@@ -80,7 +84,8 @@ class Settings {
     ..aiEnabled = j['ai'] as bool? ?? false
     ..autoImport = j['autoImport'] as bool? ?? false
     ..keepFilesLocal = j['keepLocal'] as bool? ?? false
-    ..neverAsk = j['neverAsk'] as bool? ?? false;
+    ..neverAsk = j['neverAsk'] as bool? ?? false
+    ..lastRepair = (j['repair'] as num?)?.toInt();
 }
 
 /// File sul telefono: indice, impostazioni, PDF e anteprime.

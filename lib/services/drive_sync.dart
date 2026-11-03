@@ -293,37 +293,109 @@ class DriveSync {
   /// Cartelle già trovate o create durante questa sincronizzazione.
   final Map<String, String> _folders = {};
 
+  /// Cartelle in creazione: due richieste insieme per la stessa cartella
+  /// aspettano la stessa creazione invece di farne due (cartelle doppie).
+  final Map<String, Future<String>> _creating = {};
+
   Future<String> _folderFor(drive.DriveApi api, String root, List<String> segments) async {
     var parent = root;
     var key = root;
     for (final seg in segments) {
-      key = '$key/$seg';
+      key = '$key/${seg.trim().toLowerCase()}';
       final cached = _folders[key];
       if (cached != null) {
         parent = cached;
         continue;
       }
-      final res = await api.files.list(
-        q: "'${_q(parent)}' in parents and name = '${_q(seg)}' "
-            "and mimeType = '$folderMime' and trashed = false",
-        spaces: 'drive',
-        $fields: 'files(id)',
-      );
-      final found = res.files ?? const <drive.File>[];
-      final id = found.isNotEmpty && found.first.id != null
-          ? found.first.id!
-          : (await api.files.create(
-              drive.File()
-                ..name = seg
-                ..mimeType = folderMime
-                ..parents = [parent],
-              $fields: 'id',
-            ))
-              .id!;
+      final p = parent;
+      final id = await (_creating[key] ??= _findOrCreate(api, p, seg.trim()));
+      _creating.remove(key);
       _folders[key] = id;
       parent = id;
     }
     return parent;
+  }
+
+  Future<String> _findOrCreate(drive.DriveApi api, String parent, String name) async {
+    final res = await api.files.list(
+      q: "'${_q(parent)}' in parents and name = '${_q(name)}' "
+          "and mimeType = '$folderMime' and trashed = false",
+      spaces: 'drive',
+      orderBy: 'createdTime',
+      $fields: 'files(id)',
+    );
+    final found = res.files ?? const <drive.File>[];
+    // Se ce n'è più d'una si usa sempre la più vecchia (le altre si uniscono
+    // con repairFolders).
+    if (found.isNotEmpty && found.first.id != null) return found.first.id!;
+    final created = await api.files.create(
+      drive.File()
+        ..name = name
+        ..mimeType = folderMime
+        ..parents = [parent],
+      $fields: 'id',
+    );
+    return created.id!;
+  }
+
+  /// Ripara le cartelle dell'archivio: unisce quelle con lo stesso nome
+  /// nello stesso posto (spostando il contenuto nella più vecchia) e toglie
+  /// quelle rimaste vuote. Restituisce quante cartelle ha sistemato.
+  Future<int> repairFolders({required String? folderId}) => _withApi((api) async {
+        final root = folderId ?? await _ownFolder(api);
+        _folders.clear();
+        return _repair(api, root, isRoot: true);
+      });
+
+  Future<int> _repair(drive.DriveApi api, String id, {bool isRoot = false}) async {
+    var fixed = 0;
+    var children = await _listAll(api, "'${_q(id)}' in parents and trashed = false");
+    final byName = <String, List<drive.File>>{};
+    for (final f in children) {
+      if (f.mimeType != folderMime || f.id == null) continue;
+      byName.putIfAbsent((f.name ?? '').trim().toLowerCase(), () => []).add(f);
+    }
+    for (final group in byName.values) {
+      if (group.length < 2) continue;
+      // La più vecchia resta: le altre le passano tutto.
+      final metas = <(drive.File, DateTime)>[];
+      for (final f in group) {
+        final m = await api.files.get(f.id!, $fields: 'id,createdTime') as drive.File;
+        metas.add((f, m.createdTime ?? DateTime.now()));
+      }
+      metas.sort((x, y) => x.$2.compareTo(y.$2));
+      final keeper = metas.first.$1.id!;
+      for (final (extra, _) in metas.skip(1)) {
+        final inside = await _listAll(api, "'${_q(extra.id!)}' in parents and trashed = false");
+        for (final c in inside) {
+          if (c.id == null) continue;
+          // Per i file dell'archivio si aggiorna anche "dove l'ha messo
+          // l'app", così lo spostamento non sembra una tua correzione.
+          final props = c.properties ?? const <String, String?>{};
+          final update = drive.File();
+          if (props['pdDoc'] != null && props['pdParent'] == extra.id) {
+            update.properties = {...props, 'pdParent': keeper};
+          }
+          await api.files.update(update, c.id!, addParents: keeper, removeParents: extra.id!, $fields: 'id');
+        }
+        await api.files.update(drive.File()..trashed = true, extra.id!, $fields: 'id');
+        fixed++;
+      }
+    }
+    if (fixed > 0) children = await _listAll(api, "'${_q(id)}' in parents and trashed = false");
+    for (final f in children) {
+      if (f.id == null || f.mimeType != folderMime) continue;
+      final name = (f.name ?? '').trim().toLowerCase();
+      if (isRoot && name == inboxFolderName.toLowerCase()) continue;
+      fixed += await _repair(api, f.id!);
+      // Rimasta vuota (anche dopo le unioni): si toglie.
+      final left = await _listAll(api, "'${_q(f.id!)}' in parents and trashed = false");
+      if (left.isEmpty) {
+        await api.files.update(drive.File()..trashed = true, f.id!, $fields: 'id');
+        fixed++;
+      }
+    }
+    return fixed;
   }
 
   Map<String, String> _props(String root, Document d, bool archived, {String? name, String? parent}) => {

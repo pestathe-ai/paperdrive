@@ -606,6 +606,11 @@ class AppState extends ChangeNotifier {
   /// Fine della modifica di un documento: registra la cronologia ed esegue
   /// i flussi "modificato".
   void documentEdited(Document d, Map<String, dynamic> before) {
+    // Cambiata la categoria o la persona nell'app: la cartella scelta a mano
+    // non vale più, il documento va nella cartella della nuova categoria.
+    if (before['type'] != d.typeId || (before['cf'] as Map?)?['cf-persona'] != d.customFields['cf-persona']) {
+      d.pinnedFolder = null;
+    }
     if (logChanges(archive, before, d)) d.userEdited = true;
     _runUpdatedFlows(d);
     changed();
@@ -828,6 +833,21 @@ class AppState extends ChangeNotifier {
       busy = null;
       notifyListeners();
       unawaited(ai.release());
+    }
+  }
+
+  /// Ripara subito le cartelle su Drive (doppie o vuote).
+  Future<int> repairDriveFolders() async {
+    syncStatus = 'Riordino delle cartelle su Drive…';
+    notifyListeners();
+    try {
+      final n = await drive.repairFolders(folderId: _folder);
+      settings.lastRepair = nowMs();
+      await storage.saveSettings(settings);
+      return n;
+    } finally {
+      syncStatus = null;
+      notifyListeners();
     }
   }
 
@@ -1303,6 +1323,17 @@ class AppState extends ChangeNotifier {
       if (out.learned > 0) _scheduleTraining();
       onDrive = out.remoteNames;
       await storage.saveOnDrive(onDrive);
+      // Una volta alla settimana (e subito dopo l'aggiornamento): unisce le
+      // cartelle doppie e toglie quelle vuote.
+      if (out.canEdit &&
+          (settings.lastRepair == null || nowMs() - settings.lastRepair! > const Duration(days: 7).inMilliseconds)) {
+        try {
+          syncStatus = 'Riordino delle cartelle su Drive…';
+          notifyListeners();
+          await drive.repairFolders(folderId: _folder);
+          settings.lastRepair = nowMs();
+        } catch (_) {}
+      }
       if (!settings.keepFilesLocal) await _freeSpace();
       await storage.saveArchive(archive);
       settings
