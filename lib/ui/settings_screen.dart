@@ -347,7 +347,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ListTile(
               leading: const Icon(Icons.account_tree_outlined),
               title: const Text('Riordina le cartelle su Drive'),
-              subtitle: const Text('Unisce le cartelle doppie e toglie quelle vuote (lo fa da sola una volta a settimana)'),
+              subtitle: const Text('Unisce le cartelle doppie (lo fa da sola una volta a settimana)'),
               onTap: () async {
                 try {
                   final n = await app.repairDriveFolders();

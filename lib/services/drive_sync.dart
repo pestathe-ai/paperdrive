@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart' show md5;
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
@@ -339,8 +340,7 @@ class DriveSync {
   }
 
   /// Ripara le cartelle dell'archivio: unisce quelle con lo stesso nome
-  /// nello stesso posto (spostando il contenuto nella più vecchia) e toglie
-  /// quelle rimaste vuote. Restituisce quante cartelle ha sistemato.
+  /// nello stesso posto (spostando il contenuto nella più vecchia). Restituisce quante cartelle ha sistemato.
   Future<int> repairFolders({required String? folderId}) => _withApi((api) async {
         final root = folderId ?? await _ownFolder(api);
         _folders.clear();
@@ -387,18 +387,13 @@ class DriveSync {
       if (f.id == null || f.mimeType != folderMime) continue;
       final name = (f.name ?? '').trim().toLowerCase();
       if (isRoot && name == inboxFolderName.toLowerCase()) continue;
+      // Le cartelle vuote restano: possono essere tue, pronte da riempire.
       fixed += await _repair(api, f.id!);
-      // Rimasta vuota (anche dopo le unioni): si toglie.
-      final left = await _listAll(api, "'${_q(f.id!)}' in parents and trashed = false");
-      if (left.isEmpty) {
-        await api.files.update(drive.File()..trashed = true, f.id!, $fields: 'id');
-        fixed++;
-      }
     }
     return fixed;
   }
 
-  Map<String, String> _props(String root, Document d, bool archived, {String? name, String? parent}) => {
+  Map<String, String> _props(String root, Document d, bool archived, {String? name, String? parent, String? path}) => {
         'pdArchive': root,
         'pdDoc': d.id,
         'pdKind': archived ? 'arch' : 'orig',
@@ -406,6 +401,7 @@ class DriveSync {
         // Dove l'app l'ha messo: se su Drive cambia, l'ha cambiato l'utente.
         if (name != null) 'pdName': name,
         if (parent != null) 'pdParent': parent,
+        if (path != null) 'pdPath': path,
       };
 
   /// Cache delle cartelle: id → (nome, cartella madre).
@@ -431,7 +427,7 @@ class DriveSync {
   }
 
   /// Dove deve stare un file su Drive: cartella e nome leggibile.
-  Future<(String, String)> _placeOf(
+  Future<(String, String, String)> _placeOf(
     drive.DriveApi api,
     Archive a,
     String root,
@@ -441,8 +437,13 @@ class DriveSync {
     final (folders, _) = drivePath(a, d);
     final name = driveFileName(a, d, archived: archived);
     final parent = a.config.organizeDrive ? await _folderFor(api, root, folders) : root;
-    return (parent, name);
+    return (parent, name, _pathKey(a.config.organizeDrive ? folders : const []));
   }
+
+  /// Impronta del percorso (le proprietà di Drive sono corte): serve a
+  /// capire se l'utente ha spostato o rinominato una cartella intera.
+  static String _pathKey(List<String> folders) =>
+      md5.convert(utf8.encode(folders.map((f) => f.trim().toLowerCase()).join('/'))).toString().substring(0, 16);
 
   /// Esegue la sincronizzazione completa e restituisce l'archivio unito.
   Future<SyncOutcome> sync(
@@ -561,13 +562,13 @@ class DriveSync {
         status?.call('Caricamento su Drive: $i di ${plan.upload.length}');
         final d = merged.documents[docIdOfFile(name)]!;
         final archived = name.contains('.archive');
-        final (parent, driveName) = await _placeOf(api, merged, root, d, archived);
+        final (parent, driveName, pathKey) = await _placeOf(api, merged, root, d, archived);
         final bytes = await storage.docFile(name).readAsBytes();
         final created = await api.files.create(
           drive.File()
             ..name = driveName
             ..parents = [parent]
-            ..properties = _props(root, d, archived, name: driveName, parent: parent),
+            ..properties = _props(root, d, archived, name: driveName, parent: parent, path: pathKey),
           uploadMedia: _media(bytes, 'application/pdf'),
           $fields: 'id',
         );
@@ -614,9 +615,19 @@ class DriveSync {
           if (lastName == null || lastParent == null || r.parents.isEmpty) continue;
           final renamed = r.name != lastName;
           final moved = !r.parents.contains(lastParent);
-          if (!renamed && !moved) continue;
           try {
-            final folders = moved ? await _pathFromRoot(api, root, r.parents.first) : null;
+            // Cartella intera spostata o rinominata (es. "Lavori condominiali"
+            // messa dentro "Via alessandrina"): il file è nella stessa
+            // cartella di prima, ma il percorso è cambiato.
+            List<String>? actual;
+            var folderChanged = false;
+            final lastPath = r.props['pdPath'];
+            if (!moved && lastPath != null) {
+              actual = await _pathFromRoot(api, root, r.parents.first);
+              folderChanged = actual != null && _pathKey(actual) != lastPath;
+            }
+            if (!renamed && !moved && !folderChanged) continue;
+            final folders = moved ? await _pathFromRoot(api, root, r.parents.first) : (folderChanged ? actual : null);
             if (moved && folders == null) {
               // Portato fuori dalla cartella dell'archivio: resta dove l'hai messo.
               outside.add(d.id);
@@ -647,10 +658,10 @@ class DriveSync {
             final r = remoteFiles[name];
             if (r == null) continue;
             final archived = name.contains('.archive');
-            final (parent, driveName) = await _placeOf(api, merged, root, d, archived);
+            final (parent, driveName, pathKey) = await _placeOf(api, merged, root, d, archived);
             final moved = !(r.parents.length == 1 && r.parents.first == parent);
             if (r.name == driveName && !moved && r.tagged &&
-                r.props['pdName'] == driveName && r.props['pdParent'] == parent) {
+                r.props['pdName'] == driveName && r.props['pdParent'] == parent && r.props['pdPath'] == pathKey) {
               continue;
             }
             status?.call('Archiviazione: $driveName');
@@ -658,7 +669,7 @@ class DriveSync {
               await api.files.update(
                 drive.File()
                   ..name = driveName
-                  ..properties = _props(root, d, archived, name: driveName, parent: parent),
+                  ..properties = _props(root, d, archived, name: driveName, parent: parent, path: pathKey),
                 r.id,
                 addParents: moved ? parent : null,
                 removeParents: moved && r.parents.isNotEmpty ? r.parents.join(',') : null,
