@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -157,6 +158,26 @@ class DriveSync {
 
   /// Ripete una volta se il token è scaduto.
   Future<T> _withApi<T>(Future<T> Function(drive.DriveApi) f, {bool interactive = false}) async {
+    // Connessione caduta (cambio di rete, telefono in risparmio energetico):
+    // si riprova fino a 3 volte prima di arrendersi.
+    for (var attempt = 0;; attempt++) {
+      try {
+        return await _withApiOnce(f, interactive: interactive);
+      } catch (e) {
+        final s = '$e';
+        final network = e is SocketException ||
+            e is HttpException ||
+            e is TimeoutException ||
+            s.contains('ClientException') ||
+            s.contains('Connection') ||
+            s.contains('connection abort');
+        if (!network || attempt >= 2) rethrow;
+        await Future<void>.delayed(Duration(seconds: 3 * (attempt + 1)));
+      }
+    }
+  }
+
+  Future<T> _withApiOnce<T>(Future<T> Function(drive.DriveApi) f, {bool interactive = false}) async {
     try {
       return await f(await _api(interactive: interactive));
     } on drive.DetailedApiRequestError catch (e) {

@@ -164,4 +164,31 @@ void main() {
     expect(d.typeId, 'st-bolletta');
     expect(a.activeTypes.where((t) => t.name == 'Bollette'), isEmpty);
   });
+
+  test('cartelle per persona in cima: persona e categoria giuste', () {
+    final a = archive();
+    final d = Document(title: 'Referto', content: 'referto', created: DateTime(2026, 3, 1), typeId: 'st-banca');
+    applyFolderCorrection(a, d, folders: ['Maria', 'Sanità', '2026']);
+    expect(d.typeId, healthTypeId);
+    expect(d.customFields[personFieldId], 'Maria');
+    expect(a.activeTypes.where((t) => t.name == 'Maria'), isEmpty);
+    expect(drivePath(a, d).$1, ['Maria', 'Sanità', '2026']);
+    // Un nuovo referto di Luca segue lo stesso ordine (persona prima).
+    final n = Document(title: 'Altro', content: 'x', created: DateTime(2026, 5, 1), typeId: healthTypeId)
+      ..storagePathId = d.storagePathId
+      ..customFields[personFieldId] = 'Luca';
+    expect(drivePath(a, n).$1, ['Luca', 'Sanità', '2026']);
+  });
+
+  test('categorie create per sbaglio col nome di una persona', () {
+    final a = archive();
+    final t = NamedEntity(name: 'Maria', algorithm: MatchAlgorithm.auto);
+    a.types[t.id] = t;
+    final d = Document(title: 'Ref', typeId: t.id, created: DateTime(2026))..pinnedFolder = ['Maria', 'Sanità', '2026'];
+    a.documents[d.id] = d;
+    expect(fixPersonTypes(a), [d]);
+    expect(d.typeId, healthTypeId);
+    expect(d.customFields[personFieldId], 'Maria');
+    expect(a.type(t.id), isNull);
+  });
 }

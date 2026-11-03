@@ -108,6 +108,12 @@ class AppState extends ChangeNotifier {
       addStarterEntities(archive);
       ensurePeopleEntities(archive);
       migrateLearnedPaths(archive);
+      for (final d in fixPersonTypes(archive)) {
+        if (d.typeId == null) {
+          applyMatches(archive, d);
+          applyKindCategory(archive, d);
+        }
+      }
       await storage.saveArchive(archive);
     }
     await storage.clearTmp();

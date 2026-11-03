@@ -92,25 +92,57 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
       changed.add('ripristinato');
     }
     if (segs.isNotEmpty) {
-      // Categoria: la prima cartella (creata se non esiste).
-      var type = findByName(a.activeTypes, segs.first);
-      if (type == null) {
-        type = NamedEntity(name: _cap(segs.first), algorithm: MatchAlgorithm.auto);
-        a.types[type.id] = type;
+      // Persona: una cartella col nome di una persona della famiglia, in
+      // qualsiasi punto (anche in cima: "Domenico/Sanità/…").
+      Person? personOf(String s) {
+        final n = normalize(s);
+        for (final p in a.config.people) {
+          if (normalize(p.name) == n || p.aliases.any((x) => normalize(x) == n)) return p;
+        }
+        return null;
       }
-      if (d.typeId != type.id) {
+
+      bool dateSeg(String s) => _yearRe.hasMatch(s) || _isMonth(s);
+      // Categoria: la prima cartella che è una categoria esistente; se non ce
+      // n'è, la prima che non è persona né data (creata nuova).
+      var catIdx = -1;
+      NamedEntity? type;
+      for (var i = 0; i < segs.length; i++) {
+        if (personOf(segs[i]) != null || dateSeg(segs[i])) continue;
+        final t = findByName(a.activeTypes, segs[i]);
+        if (t != null) {
+          catIdx = i;
+          type = t;
+          break;
+        }
+      }
+      if (type == null) {
+        for (var i = 0; i < segs.length; i++) {
+          if (personOf(segs[i]) != null || dateSeg(segs[i])) continue;
+          catIdx = i;
+          type = NamedEntity(name: _cap(segs[i]), algorithm: MatchAlgorithm.auto);
+          a.types[type.id] = type;
+          break;
+        }
+      }
+      if (type != null && d.typeId != type.id) {
         d.typeId = type.id;
         changed.add('categoria');
       }
 
       // Le altre cartelle: anni, mesi, persona, specialità, referti… o
-      // sottocartelle personali.
-      // La categoria scritta per esteso: la sottocartella vale solo lì.
-      final template = <String>[type.name];
+      // sottocartelle personali. La categoria è scritta per esteso: la
+      // sottocartella vale solo lì.
+      final template = <String>[];
       final custom = <String>[];
       String? person;
-      for (final s in segs.skip(1)) {
+      for (var i = 0; i < segs.length; i++) {
+        final s = segs[i];
         final n = normalize(s);
+        if (i == catIdx) {
+          template.add(type!.name);
+          continue;
+        }
         if (_yearRe.hasMatch(s)) {
           template.add('{created_year}');
           continue;
@@ -119,7 +151,7 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
           template.add('{mese}');
           continue;
         }
-        final p = a.config.people.where((p) => normalize(p.name) == n).firstOrNull;
+        final p = personOf(s);
         if (p != null) {
           person = p.name;
           template.add('{persona}');
@@ -148,7 +180,11 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
         changed.add('persona');
       }
 
-      if (custom.isEmpty) {
+      // Persona prima della categoria ("Domenico/Sanità/…"): un ordine tuo,
+      // da usare anche per i documenti nuovi.
+      final pi = template.indexOf('{persona}');
+      final personFirst = pi >= 0 && catIdx >= 0 && pi < catIdx;
+      if (custom.isEmpty && !personFirst) {
         // Struttura standard: basta il modello generale (o quello della sanità).
         final want = d.typeId == healthTypeId ? healthPathId : null;
         if (d.storagePathId != want && (want == null || a.storagePath(want) != null)) {
@@ -289,10 +325,13 @@ bool isLearnedPath(StoragePath p) =>
 /// cartella del box).
 bool learnedPathFits(Archive a, StoragePath p, Document d) {
   if (!isLearnedPath(p)) return true;
-  final first = p.template.split('/').first;
-  if (first.contains('{')) return true; // percorsi vecchi: vedi migrateLearnedPaths
+  final segs = p.template.split('/');
+  if (segs.first == '{document_type}') return true; // percorsi vecchi: vedi migrateLearnedPaths
   final t = a.type(d.typeId);
-  return t != null && normalize(t.name) == normalize(first);
+  if (t == null) return false;
+  // La categoria è una delle cartelle scritte per esteso (anche dopo la
+  // persona: "{persona}/Sanità/…").
+  return segs.any((seg) => !seg.contains('{') && normalize(seg) == normalize(t.name));
 }
 
 /// Percorsi imparati delle versioni precedenti ("{document_type}/…"): la
@@ -325,4 +364,32 @@ bool dropUnfitPath(Archive a, Document d) {
   if (p == null || learnedPathFits(a, p, d)) return false;
   d.storagePathId = null;
   return true;
+}
+
+/// Categorie create per sbaglio col nome di una persona (versioni < 0.17.2,
+/// spostando file in cartelle "Domenico/…"): i loro documenti prendono la
+/// persona e la categoria vera, la categoria sbagliata si toglie.
+/// Restituisce i documenti da riclassificare.
+List<Document> fixPersonTypes(Archive a) {
+  final out = <Document>[];
+  for (final t in a.activeTypes.toList()) {
+    if (t.id.startsWith('st-')) continue;
+    final n = normalize(t.name);
+    final p = a.config.people
+        .where((p) => normalize(p.name) == n || p.aliases.any((x) => normalize(x) == n))
+        .firstOrNull;
+    if (p == null) continue;
+    for (final d in a.activeDocuments.where((d) => d.typeId == t.id)) {
+      if ((d.customFields[personFieldId] ?? '').isEmpty) d.customFields[personFieldId] = p.name;
+      d.typeId = null;
+      final pin = d.pinnedFolder;
+      if (pin != null && pin.isNotEmpty) applyFolderCorrection(a, d, folders: pin);
+      d.touch();
+      out.add(d);
+    }
+    t
+      ..deleted = true
+      ..modified = nowMs();
+  }
+  return out;
 }
