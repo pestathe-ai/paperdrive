@@ -53,7 +53,7 @@ void main() {
       );
       applyPeople(a, d);
       final (folders, name) = drivePath(a, d);
-      expect(folders, ['Sanità', 'Maria', 'Cardiologia', 'Referti', '2026', '03 Marzo']);
+      expect(folders, ['Maria', 'Sanità', 'Cardiologia', 'Referti', '2026', '03 Marzo']);
       expect(name, 'Ecocardiogramma San Gerardo 12-03-2026');
     });
 
@@ -61,7 +61,7 @@ void main() {
       final a = archive();
       final paga = Document(title: 'Busta paga marzo', content: busta, created: DateTime(2026, 3, 31), typeId: 'st-paga');
       applyPeople(a, paga);
-      expect(drivePath(a, paga).$1, ['Busta paga', 'Maria', '2026']);
+      expect(drivePath(a, paga).$1, ['Maria', 'Busta paga', '2026']);
       final luce = Document(title: 'Bolletta luce', content: bolletta, created: DateTime(2026, 3, 5), typeId: 'st-bolletta');
       applyPeople(a, luce);
       expect(luce.customFields[personFieldId], 'Maria');

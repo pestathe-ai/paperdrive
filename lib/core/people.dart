@@ -36,7 +36,13 @@ const String healthKindFieldId = 'cf-tiposan';
 const String healthTypeId = 'st-sanita';
 const String healthPathId = 'st-path-sanita';
 const String healthPathTemplate =
-    'Sanità/{persona}/{specialita}/{tipo_sanitario}/{created_year}/{mese}/{title} {data}';
+    '{persona}/Sanità/{specialita}/{tipo_sanitario}/{created_year}/{mese}/{title} {data}';
+
+/// Modelli della sanità delle versioni precedenti (categoria prima della persona).
+const List<String> oldHealthTemplates = [
+  'Sanità/{persona}/{specialita}/{tipo_sanitario}/{created_year}/{mese}/{title} {data}',
+  'Sanità/{persona}/{specialita}/{tipo_sanitario}/{created_year}/{mese}/{created} {title}',
+];
 
 /// Categorie che riguardano tutta la casa: niente cartella per persona.
 const Set<String> defaultSharedTypeIds = {'st-bolletta', 'st-casa'};
@@ -67,6 +73,13 @@ int ensurePeopleEntities(Archive a) {
       p.template = '${p.template.substring(0, p.template.length - '{created} {title}'.length)}{title} {data}';
       n++;
     }
+  }
+  final hp = a.storagePaths[healthPathId];
+  if (hp != null && oldHealthTemplates.contains(hp.template)) {
+    hp
+      ..template = healthPathTemplate
+      ..modified = nowMs();
+    n++;
   }
   if (!a.storagePaths.containsKey(healthPathId)) {
     a.storagePaths[healthPathId] = StoragePath(

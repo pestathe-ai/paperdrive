@@ -15,6 +15,7 @@ import '../core/import_hint.dart' show inboxFolderName;
 import '../core/models.dart';
 import '../core/organize.dart';
 import '../core/sync_merge.dart';
+import '../core/text_utils.dart' show normalize;
 import 'storage.dart';
 
 /// Serve l'accesso a Google (l'utente deve toccare "Collega").
@@ -323,7 +324,7 @@ class DriveSync {
     var parent = root;
     var key = root;
     for (final seg in segments) {
-      key = '$key/${seg.trim().toLowerCase()}';
+      key = '$key/${folderKey(seg)}';
       final cached = _folders[key];
       if (cached != null) {
         parent = cached;
@@ -338,18 +339,25 @@ class DriveSync {
     return parent;
   }
 
+  /// Nome confrontabile: senza spazi in più, maiuscole e accenti
+  /// ("Via alessandrina " = "via Alessandrina").
+  static String folderKey(String s) => normalize(s).replaceAll(RegExp(r'\s+'), ' ').trim();
+
   Future<String> _findOrCreate(drive.DriveApi api, String parent, String name) async {
+    // Tutte le sottocartelle e confronto "largo": una cartella tua con uno
+    // spazio in fondo o una maiuscola diversa è la stessa cartella.
     final res = await api.files.list(
-      q: "'${_q(parent)}' in parents and name = '${_q(name)}' "
-          "and mimeType = '$folderMime' and trashed = false",
+      q: "'${_q(parent)}' in parents and mimeType = '$folderMime' and trashed = false",
       spaces: 'drive',
       orderBy: 'createdTime',
-      $fields: 'files(id)',
+      pageSize: 1000,
+      $fields: 'files(id,name)',
     );
-    final found = res.files ?? const <drive.File>[];
-    // Se ce n'è più d'una si usa sempre la più vecchia (le altre si uniscono
-    // con repairFolders).
-    if (found.isNotEmpty && found.first.id != null) return found.first.id!;
+    final key = folderKey(name);
+    for (final f in res.files ?? const <drive.File>[]) {
+      // La più vecchia vince (le doppie si uniscono con repairFolders).
+      if (f.id != null && folderKey(f.name ?? '') == key) return f.id!;
+    }
     final created = await api.files.create(
       drive.File()
         ..name = name
@@ -362,11 +370,24 @@ class DriveSync {
 
   /// Ripara le cartelle dell'archivio: unisce quelle con lo stesso nome
   /// nello stesso posto (spostando il contenuto nella più vecchia). Restituisce quante cartelle ha sistemato.
-  Future<int> repairFolders({required String? folderId}) => _withApi((api) async {
+  /// [generated]: nomi di cartelle che crea l'app (categorie, persone,
+  /// specialità…): se restano vuote si tolgono. Le altre cartelle vuote
+  /// (tue, pronte da riempire) restano.
+  Future<int> repairFolders({required String? folderId, Set<String> generated = const {}}) => _withApi((api) async {
         final root = folderId ?? await _ownFolder(api);
         _folders.clear();
+        _generated = {for (final g in generated) folderKey(g)};
         return _repair(api, root, isRoot: true);
       });
+
+  Set<String> _generated = const {};
+
+  bool _isGenerated(String name) {
+    final k = folderKey(name);
+    return _generated.contains(k) ||
+        RegExp(r'^(19|20)\d{2}$').hasMatch(k) ||
+        RegExp(r'^\d{2} (gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)$').hasMatch(k);
+  }
 
   Future<int> _repair(drive.DriveApi api, String id, {bool isRoot = false}) async {
     var fixed = 0;
@@ -374,7 +395,7 @@ class DriveSync {
     final byName = <String, List<drive.File>>{};
     for (final f in children) {
       if (f.mimeType != folderMime || f.id == null) continue;
-      byName.putIfAbsent((f.name ?? '').trim().toLowerCase(), () => []).add(f);
+      byName.putIfAbsent(folderKey(f.name ?? ''), () => []).add(f);
     }
     for (final group in byName.values) {
       if (group.length < 2) continue;
@@ -408,8 +429,16 @@ class DriveSync {
       if (f.id == null || f.mimeType != folderMime) continue;
       final name = (f.name ?? '').trim().toLowerCase();
       if (isRoot && name == inboxFolderName.toLowerCase()) continue;
-      // Le cartelle vuote restano: possono essere tue, pronte da riempire.
       fixed += await _repair(api, f.id!);
+      // Vuota e con un nome dell'app (es. "Sanità/2026" dopo il passaggio a
+      // "Persona/Sanità/2026"): si toglie. Le tue cartelle vuote restano.
+      if (_isGenerated(f.name ?? '')) {
+        final left = await _listAll(api, "'${_q(f.id!)}' in parents and trashed = false");
+        if (left.isEmpty) {
+          await api.files.update(drive.File()..trashed = true, f.id!, $fields: 'id');
+          fixed++;
+        }
+      }
     }
     return fixed;
   }

@@ -747,7 +747,10 @@ class ArchiveConfig {
         sharedTypeIds = sharedTypeIds ?? {...defaultSharedTypeIds},
         modified = modified ?? 0;
 
-  static const String defaultPathTemplate = '{document_type}/{persona}/{created_year}/{title} {data}';
+  /// Prima la persona, poi la categoria: Domenico/Sanità/2026, Nina/Scuola
+  /// e studio/2026. Ciò che è di tutta la casa (persona vuota) sta in cima.
+  static const String defaultPathTemplate = '{persona}/{document_type}/{created_year}/{title} {data}';
+  static const String oldPathTemplate3 = '{document_type}/{persona}/{created_year}/{title} {data}';
   static const String oldPathTemplate = '{document_type}/{created_year}/{created} {title}';
   static const String oldPathTemplate2 = '{document_type}/{persona}/{created_year}/{created} {title}';
   static const String defaultTitleTemplate = '{kind} {details} {amount} - {correspondent}';
@@ -799,7 +802,7 @@ class ArchiveConfig {
 
   factory ArchiveConfig.fromJson(Map<String, dynamic> j) => ArchiveConfig(
         pathTemplate: switch (j['path'] as String?) {
-          null || oldPathTemplate || oldPathTemplate2 => defaultPathTemplate,
+          null || oldPathTemplate || oldPathTemplate2 || oldPathTemplate3 => defaultPathTemplate,
           final t => t,
         },
         titleTemplate: switch (j['title'] as String?) {

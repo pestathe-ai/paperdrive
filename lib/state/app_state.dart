@@ -98,6 +98,14 @@ class AppState extends ChangeNotifier {
     settings = await storage.loadSettings();
     mail = await storage.loadMail();
     onDrive = await storage.loadOnDrive();
+    // Passaggio a "prima la persona": i file si spostano alla prossima
+    // sincronizzazione, poi il riordino toglie le vecchie cartelle vuote.
+    if (!settings.personFirst) {
+      settings
+        ..personFirst = true
+        ..lastRepair = null;
+      await storage.saveSettings(settings);
+    }
     ingestor = Ingestor(storage);
     drive = DriveSync(storage);
     mailImporter = MailImporter(ingestor);
@@ -842,12 +850,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Nomi delle cartelle che crea l'app (si tolgono se restano vuote).
+  Set<String> _generatedFolderNames() => {
+        for (final t in archive.activeTypes) t.name,
+        for (final p in archive.config.people) p.name,
+        for (final (s, _) in specialties) s,
+        'Referti', 'Prescrizioni', 'Altro', 'Senza categoria', 'Sanità', 'PDF-A',
+      };
+
   /// Ripara subito le cartelle su Drive (doppie o vuote).
   Future<int> repairDriveFolders() async {
     syncStatus = 'Riordino delle cartelle su Drive…';
     notifyListeners();
     try {
-      final n = await drive.repairFolders(folderId: _folder);
+      final n = await drive.repairFolders(folderId: _folder, generated: _generatedFolderNames());
       settings.lastRepair = nowMs();
       await storage.saveSettings(settings);
       return n;
@@ -1336,7 +1352,7 @@ class AppState extends ChangeNotifier {
         try {
           syncStatus = 'Riordino delle cartelle su Drive…';
           notifyListeners();
-          await drive.repairFolders(folderId: _folder);
+          await drive.repairFolders(folderId: _folder, generated: _generatedFolderNames());
           settings.lastRepair = nowMs();
         } catch (_) {}
       }

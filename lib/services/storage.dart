@@ -34,6 +34,9 @@ class Settings {
   /// Ultima riparazione delle cartelle su Drive (millisecondi).
   int? lastRepair;
 
+  /// Passaggio alle cartelle "prima la persona" già fatto.
+  bool personFirst = false;
+
   /// Cartella Drive dell'archivio (la mia o una condivisa con me).
   String? driveFolderId;
   String? driveFolderOwner;
@@ -64,6 +67,7 @@ class Settings {
         'keepLocal': keepFilesLocal,
         'neverAsk': neverAsk,
         'repair': lastRepair,
+        'personFirst': personFirst,
       };
 
   static Settings fromJson(Map<String, dynamic> j) => Settings()
@@ -85,7 +89,8 @@ class Settings {
     ..autoImport = j['autoImport'] as bool? ?? false
     ..keepFilesLocal = j['keepLocal'] as bool? ?? false
     ..neverAsk = j['neverAsk'] as bool? ?? false
-    ..lastRepair = (j['repair'] as num?)?.toInt();
+    ..lastRepair = (j['repair'] as num?)?.toInt()
+    ..personFirst = j['personFirst'] as bool? ?? false;
 }
 
 /// File sul telefono: indice, impostazioni, PDF e anteprime.
