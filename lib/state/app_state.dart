@@ -19,6 +19,7 @@ import '../core/formats.dart';
 import '../core/import_hint.dart';
 import '../core/mail_rules.dart';
 import '../core/matching.dart';
+import '../core/meaning.dart';
 import '../core/models.dart';
 import '../core/organize.dart';
 import '../core/people.dart';
@@ -31,6 +32,7 @@ import '../services/ai_assistant.dart';
 import '../services/drive_sync.dart';
 import '../services/ingest.dart';
 import '../services/mail_import.dart';
+import '../services/meaning_service.dart';
 import '../services/storage.dart';
 
 /// Esito dell'importazione di un singolo file.
@@ -70,6 +72,15 @@ class AppState extends ChangeNotifier {
   /// Modello linguistico sul telefono (facoltativo).
   final AiAssistant ai = AiAssistant();
 
+  /// Rete neurale della somiglianza per significato (facoltativa) e i
+  /// vettori dei documenti, che restano sul telefono.
+  final MeaningService meaningNet = MeaningService();
+  MeaningStore meanings = MeaningStore();
+
+  /// Calcolo dei vettori dei documenti già in archivio: fatti / totale.
+  (int, int)? indexing;
+  Timer? _meaningSaveTimer;
+
   /// Importazione dalla cartella "Da importare" su Drive.
   bool importing = false;
   bool _stopImport = false;
@@ -98,6 +109,7 @@ class AppState extends ChangeNotifier {
     settings = await storage.loadSettings();
     mail = await storage.loadMail();
     onDrive = await storage.loadOnDrive();
+    meanings = await storage.loadMeanings();
     // Passaggio a "prima la persona": i file si spostano alla prossima
     // sincronizzazione, poi il riordino toglie le vecchie cartelle vuote.
     if (!settings.personFirst) {
@@ -143,7 +155,8 @@ class AppState extends ChangeNotifier {
         ..write(d.typeId)
         ..write(d.storagePathId)
         ..write((d.tagIds.toList()..sort()).join(','))
-        ..write(d.content.length);
+        ..write(d.content.length)
+        ..write(meanings.has(d) ? 'm' : '');
     }
     for (final m in <Matchable>[
       ...archive.activeTags,
@@ -165,7 +178,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final json = archive.toJson();
-      classifier = await Isolate.run(() => Learner.train(Archive.fromJson(json)));
+      final vectors = settings.meaningEnabled ? meanings.current(archive.activeDocuments) : <String, Float32List>{};
+      classifier = await Isolate.run(() => Learner.train(Archive.fromJson(json), meanings: vectors));
       _trainedSignature = sig;
     } catch (_) {
       // Senza classificatore valgono comunque le regole.
@@ -182,6 +196,11 @@ class AppState extends ChangeNotifier {
 
   Future<void> _startup() async {
     unawaited(retrain());
+    if (settings.meaningEnabled) {
+      // I documenti arrivati da altri telefoni (o da Drive) non hanno ancora
+      // il vettore: si calcola con calma dopo l'avvio.
+      Timer(const Duration(seconds: 30), () => unawaited(indexMeanings()));
+    }
     if (settings.driveEnabled && settings.autoSync) {
       await syncNow(silent: true);
     }
@@ -214,6 +233,60 @@ class AppState extends ChangeNotifier {
       _syncTimer?.cancel();
       _syncTimer = Timer(const Duration(seconds: 8), () => syncNow(silent: true));
     }
+  }
+
+  void _saveMeaningsSoon() {
+    _meaningSaveTimer?.cancel();
+    _meaningSaveTimer = Timer(const Duration(seconds: 2), () => storage.saveMeanings(meanings));
+  }
+
+  /// Scarica la rete della somiglianza e calcola i vettori dei documenti.
+  Future<void> enableMeaning() async {
+    await meaningNet.install();
+    settings.meaningEnabled = true;
+    await saveSettings();
+    await indexMeanings();
+  }
+
+  /// Toglie la rete e i vettori: si torna alla somiglianza a parole.
+  Future<void> disableMeaning() async {
+    settings.meaningEnabled = false;
+    await saveSettings();
+    await meaningNet.uninstall();
+    meanings.clear();
+    await storage.saveMeanings(meanings);
+    await retrain(force: true);
+  }
+
+  /// Calcola i vettori mancanti dei documenti in archivio.
+  Future<void> indexMeanings() async {
+    if (indexing != null || !settings.meaningEnabled) return;
+    final todo = archive.activeDocuments.where((d) => d.content.trim().length >= 20 && !meanings.has(d)).toList();
+    meanings.retain(archive.documents.keys.toSet());
+    if (todo.isEmpty) return;
+    indexing = (0, todo.length);
+    notifyListeners();
+    var done = 0;
+    try {
+      for (final d in todo) {
+        if (!settings.meaningEnabled) break;
+        final v = await meaningNet.embed(meaningText(d));
+        if (v == null && meaningNet.error != null && done == 0) break;
+        if (v != null) meanings.put(d, v);
+        done++;
+        if (done % 10 == 0 || done == todo.length) {
+          indexing = (done, todo.length);
+          notifyListeners();
+        }
+        if (done % 100 == 0) await storage.saveMeanings(meanings);
+      }
+    } finally {
+      await storage.saveMeanings(meanings);
+      await meaningNet.release();
+      indexing = null;
+      notifyListeners();
+    }
+    await retrain(force: true);
   }
 
   Future<void> saveSettings() async {
@@ -402,7 +475,15 @@ class AppState extends ChangeNotifier {
         notifyListeners();
         aiResult = await ai.analyze(model, buildAiPrompt(archive, doc));
       }
-      _prepare(doc, mailItem: mailItem, asn: asn, ai: aiResult, folders: folders);
+      Float32List? meaning;
+      if (settings.meaningEnabled && doc.content.trim().length >= 20) {
+        meaning = await meaningNet.embed(meaningText(doc));
+        if (meaning != null) {
+          meanings.put(doc, meaning);
+          _saveMeaningsSoon();
+        }
+      }
+      _prepare(doc, mailItem: mailItem, asn: asn, ai: aiResult, folders: folders, meaning: meaning);
       if (analysis.ocrPages.isNotEmpty && settings.makeArchive) {
         busy = '${prefix}Creazione della versione PDF/A…';
         notifyListeners();
@@ -439,7 +520,7 @@ class AppState extends ChangeNotifier {
     return c;
   }
 
-  void _prepare(Document doc, {MailItem? mailItem, int? asn, AiResult? ai, List<String>? folders}) {
+  void _prepare(Document doc, {MailItem? mailItem, int? asn, AiResult? ai, List<String>? folders, Float32List? meaning}) {
     if (doc.source == DocSource.scan) {
       doc.title = suggestTitle(doc.content) ?? doc.originalName;
     }
@@ -476,7 +557,7 @@ class AppState extends ChangeNotifier {
             '${mailItem.info.fromName.isEmpty ? mailItem.info.from : mailItem.info.fromName}',
       ));
     }
-    applyMatches(archive, doc, classifier: classifier);
+    applyMatches(archive, doc, classifier: classifier, meaning: meaning);
     applyKindCategory(archive, doc);
     _guessCorrespondent(doc);
     if (ai != null) applyAiResult(archive, doc, ai, retitle: false);
@@ -711,7 +792,7 @@ class AppState extends ChangeNotifier {
     var n = 0;
     for (final d in docs) {
       final before = d.toJson();
-      applyMatches(archive, d, overwrite: overwrite, classifier: classifier);
+      applyMatches(archive, d, overwrite: overwrite, classifier: classifier, meaning: meanings.of(d));
       applyKindCategory(archive, d);
       applyPeople(archive, d);
       applyLearnedFolder(archive, d);

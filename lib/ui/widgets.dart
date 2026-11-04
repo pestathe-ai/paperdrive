@@ -377,7 +377,7 @@ const Color brandOrange = Color(0xFFF28C38);
 const Color brandRed = Color(0xFFD7263D);
 
 /// Il nome dell'app come marchio: la casa dell'icona, "D" con il punto
-/// arancio come il tetto, "Paper Lab" in Sora 800.
+/// arancio come il tetto, "PaperLink Lab" in Sora 800.
 class BrandTitle extends StatelessWidget {
   const BrandTitle({super.key, this.color = Colors.white, this.size = 22, this.logo = true});
 
@@ -406,14 +406,18 @@ class BrandTitle extends StatelessWidget {
           SizedBox(width: size * 0.3),
         ],
         Flexible(
-          child: Text.rich(
+          // Il nome si rimpicciolisce invece di essere tagliato.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text.rich(
             TextSpan(children: [
               TextSpan(text: 'D', style: style),
               TextSpan(text: '.', style: style.copyWith(color: brandOrange)),
-              TextSpan(text: ' Paper Lab', style: style),
+              TextSpan(text: ' PaperLink Lab', style: style),
             ]),
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
       ],

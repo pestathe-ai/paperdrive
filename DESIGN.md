@@ -1,6 +1,6 @@
-# D. Paper Lab — come decide dove va un documento
+# D. PaperLink Lab — come decide dove va un documento
 
-Documento di progetto del motore di catalogazione (versione 0.19). Descrive
+Documento di progetto del motore di catalogazione (versione 0.20). Descrive
 le scelte fatte e perché. Il codice è in `lib/core/`.
 
 ## Obiettivo
@@ -70,6 +70,28 @@ come **esempi** e, per un documento nuovo, chiede ai più simili.
 
 Vantaggi: nessun addestramento lungo, ogni correzione è subito un esempio,
 e `Learner.similar` dice quali documenti hanno deciso.
+
+### Somiglianza per significato (facoltativa)
+
+Le parole non bastano quando due documenti parlano della stessa cosa con
+termini diversi ("idraulico per il garage" e i documenti del "box"). Chi
+scarica la rete neurale **EmbeddingGemma 2 Text 270M** (Google, Apache 2.0,
+165 MB, più di 100 lingue) ottiene per ogni documento un vettore di
+significato (`meaning.dart`, `services/meaning_service.dart`):
+
+- il modello legge i primi 2400 caratteri del contenuto; del vettore si
+  tengono le prime 256 componenti (il modello è addestrato perché bastino),
+  normalizzate;
+- il coseno tra vettori viene portato sulla scala della somiglianza a parole:
+  0 sotto 0,45 (due testi italiani qualsiasi), 1 da 0,9 in su;
+- somiglianza finale = max(parole, 0,4 × parole + 0,6 × significato): il
+  significato può solo **avvicinare** documenti, mai allontanare quelli che
+  le parole riconoscono;
+- vale per categoria, cartella e tag; il **mittente** resta deciso dalle
+  parole, perché per significato tutte le bollette si somigliano;
+- i vettori restano sul telefono (`meanings.json`), legati al testo del
+  documento: se il testo cambia, il vettore si ricalcola. Senza la rete
+  tutto funziona come prima.
 
 ## Le cartelle dell'utente
 

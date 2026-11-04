@@ -1,4 +1,4 @@
-/// Motore di D. Paper Lab: decide tag, mittente, categoria e cartella di un
+/// Motore di D. PaperLink Lab: decide tag, mittente, categoria e cartella di un
 /// documento combinando tre fonti, in quest'ordine di fiducia:
 ///
 /// 1. le regole a parole chiave scritte dall'utente;
@@ -10,10 +10,11 @@
 /// "Espressione regolare" e "Tollerante" (accetta parole scritte male
 /// dall'OCR: una lettera sbagliata ogni quattro circa).
 ///
-/// Progetto originale di D. Paper Lab (vedi DESIGN.md).
+/// Progetto originale di D. PaperLink Lab (vedi DESIGN.md).
 library;
 
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'archive.dart';
 import 'learner.dart';
@@ -289,11 +290,12 @@ String? _decide<T extends Matchable>(List<T> entities, String text, Guess? learn
 }
 
 /// Calcola tag, mittente, categoria e cartella per [doc].
-MatchResult computeMatches(Archive archive, Document doc, {Learner? classifier}) {
+/// [meaning] è il vettore della rete neurale per il documento, se c'è.
+MatchResult computeMatches(Archive archive, Document doc, {Learner? classifier, Float32List? meaning}) {
   final text = matchText(doc);
   final learner = classifier;
   final tags = <String>{};
-  final learnedTags = learner?.tags(text) ?? const <String>[];
+  final learnedTags = learner?.tags(text, meaning: meaning) ?? const <String>[];
   for (final t in archive.activeTags) {
     if (t.isInbox) continue;
     if (ruleStrength(t, text) > 0 || learnedTags.contains(t.id)) tags.add(t.id);
@@ -301,8 +303,8 @@ MatchResult computeMatches(Archive archive, Document doc, {Learner? classifier})
   return MatchResult(
     tagIds: tags,
     correspondentId: _decide(archive.activeCorrespondents, text, learner?.correspondent(text)),
-    typeId: _decide(archive.activeTypes, text, learner?.type(text)),
-    storagePathId: _decide(archive.activeStoragePaths, text, learner?.storagePath(text)),
+    typeId: _decide(archive.activeTypes, text, learner?.type(text, meaning: meaning)),
+    storagePathId: _decide(archive.activeStoragePaths, text, learner?.storagePath(text, meaning: meaning)),
   );
 }
 
@@ -313,8 +315,9 @@ bool applyMatches(
   Document doc, {
   bool overwrite = false,
   Learner? classifier,
+  Float32List? meaning,
 }) {
-  final r = computeMatches(archive, doc, classifier: classifier);
+  final r = computeMatches(archive, doc, classifier: classifier, meaning: meaning);
   var changed = false;
   for (final t in r.tagIds) {
     if (doc.tagIds.add(t)) changed = true;

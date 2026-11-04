@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/archive.dart';
 import '../core/mail_rules.dart';
+import '../core/meaning.dart';
 
 /// Impostazioni dell'app (restano sul telefono, non si sincronizzano).
 class Settings {
@@ -37,6 +38,9 @@ class Settings {
   /// Passaggio alle cartelle "prima la persona" già fatto.
   bool personFirst = false;
 
+  /// Somiglianza per significato (rete neurale EmbeddingGemma) installata e attiva.
+  bool meaningEnabled = false;
+
   /// Cartella Drive dell'archivio (la mia o una condivisa con me).
   String? driveFolderId;
   String? driveFolderOwner;
@@ -62,6 +66,7 @@ class Settings {
         'lastSync': lastSync,
         'lastErr': lastSyncError,
         'aiModel': aiModel,
+        'meaning': meaningEnabled,
         'ai': aiEnabled,
         'autoImport': autoImport,
         'keepLocal': keepFilesLocal,
@@ -85,6 +90,7 @@ class Settings {
     ..lastSync = (j['lastSync'] as num?)?.toInt()
     ..lastSyncError = j['lastErr'] as String?
     ..aiModel = j['aiModel'] as String?
+    ..meaningEnabled = j['meaning'] as bool? ?? false
     ..aiEnabled = j['ai'] as bool? ?? false
     ..autoImport = j['autoImport'] as bool? ?? false
     ..keepFilesLocal = j['keepLocal'] as bool? ?? false
@@ -115,6 +121,19 @@ class Storage {
   File get _settingsFile => File(p.join(root.path, 'settings.json'));
   File get _mailFile => File(p.join(root.path, 'mail.json'));
   File get _onDriveFile => File(p.join(root.path, 'ondrive.json'));
+  File get _meaningFile => File(p.join(root.path, 'meanings.json'));
+
+  /// Vettori della rete neurale per documento (solo sul telefono).
+  Future<MeaningStore> loadMeanings() async {
+    try {
+      if (await _meaningFile.exists()) {
+        return MeaningStore.fromJson((jsonDecode(await _meaningFile.readAsString()) as Map).cast<String, dynamic>());
+      }
+    } catch (_) {}
+    return MeaningStore();
+  }
+
+  Future<void> saveMeanings(MeaningStore m) => _writeAtomic(_meaningFile, jsonEncode(m.toJson()));
 
   /// File già caricati su Drive (per il simbolo e per liberare spazio).
   Future<Set<String>> loadOnDrive() async {

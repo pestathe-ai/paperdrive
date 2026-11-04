@@ -7,11 +7,14 @@
 /// pochi esempi, ogni correzione conta subito e si può sempre dire perché
 /// ha deciso così (i documenti simili che ha guardato).
 ///
-/// Progetto originale di D. Paper Lab (vedi DESIGN.md).
+/// Progetto originale di D. PaperLink Lab (vedi DESIGN.md).
 library;
+
+import 'dart:typed_data';
 
 import 'archive.dart';
 import 'matching.dart' show Idf, cosine, weightedVector;
+import 'meaning.dart';
 import 'models.dart';
 
 /// Una risposta dell'apprendimento, con la fiducia (0..1).
@@ -25,9 +28,12 @@ class Guess {
 }
 
 class _Example {
-  _Example(this.id, this.vector, this.correspondent, this.type, this.path, this.tags);
+  _Example(this.id, this.vector, this.meaning, this.correspondent, this.type, this.path, this.tags);
   final String id;
   final Map<String, double> vector;
+
+  /// Vettore della rete neurale, se calcolato (vedi meaning.dart).
+  final Float32List? meaning;
   final String? correspondent;
   final String? type;
   final String? path;
@@ -51,9 +57,17 @@ class Learner {
   static const int neighbours = 7;
   static const double minSimilarity = 0.25;
 
+  /// Quanti esempi hanno anche il vettore per significato.
+  int get withMeaning => _examples.where((e) => e.meaning != null).length;
+
   /// Prepara gli esempi: i documenti già esaminati e quelli corretti a mano.
-  /// Null se non ce n'è nessuno.
-  static Learner? train(Archive a, {int minTraining = Learner.minTraining}) {
+  /// [meanings] sono i vettori della rete neurale per documento, se ci sono.
+  /// Null se non c'è nessun esempio.
+  static Learner? train(
+    Archive a, {
+    int minTraining = Learner.minTraining,
+    Map<String, Float32List> meanings = const {},
+  }) {
     final inbox = a.inboxTags.map((t) => t.id).toSet();
     final idf = Idf.of(a);
     final examples = <_Example>[];
@@ -64,6 +78,7 @@ class Learner {
       examples.add(_Example(
         d.id,
         weightedVector(d.content, idf),
+        meanings[d.id],
         a.correspondent(d.correspondentId)?.id,
         a.type(d.typeId)?.id,
         // Le sottocartelle create spostando i file non si indovinano: valgono
@@ -77,15 +92,19 @@ class Learner {
   }
 
   /// I documenti d'esempio più simili al testo, con la somiglianza.
-  List<(String, double)> similar(String text, {int limit = neighbours}) =>
-      [for (final (e, s) in _neighbours(text, limit: limit)) (e.id, s)];
+  List<(String, double)> similar(String text, {int limit = neighbours, Float32List? meaning}) =>
+      [for (final (e, s) in _neighbours(text, limit: limit, meaning: meaning)) (e.id, s)];
 
-  List<(_Example, double)> _neighbours(String text, {int limit = neighbours}) {
+  /// Somiglianza a parole, alzata dal significato quando c'è il vettore
+  /// (vedi [blendSimilarity]).
+  List<(_Example, double)> _neighbours(String text, {int limit = neighbours, Float32List? meaning}) {
     final v = weightedVector(text, _idf);
-    if (v.isEmpty) return const [];
+    if (v.isEmpty && meaning == null) return const [];
     final out = <(_Example, double)>[];
     for (final e in _examples) {
-      final s = cosine(v, e.vector);
+      final words = v.isEmpty ? 0.0 : cosine(v, e.vector);
+      final m = meaning != null && e.meaning != null ? meaningScore(meaningCosine(meaning, e.meaning!)) : null;
+      final s = blendSimilarity(words, m);
       if (s >= minSimilarity) out.add((e, s));
     }
     out.sort((x, y) => y.$2.compareTo(x.$2));
@@ -93,9 +112,9 @@ class Learner {
   }
 
   /// Il voto dei vicini per un campo.
-  Guess? _vote(String text, String? Function(_Example) field) {
+  Guess? _vote(String text, String? Function(_Example) field, {Float32List? meaning}) {
     if (trainedOn < _minTraining) return null;
-    final near = _neighbours(text);
+    final near = _neighbours(text, meaning: meaning);
     if (near.isEmpty) return null;
     final weight = <String, double>{};
     final count = <String, int>{};
@@ -121,14 +140,17 @@ class Learner {
     return Guess(top.key, confidence.clamp(0, 1).toDouble());
   }
 
+  /// Il mittente si riconosce dalle parole (nomi, codici, intestazioni): il
+  /// significato non serve, anzi farebbe somigliare bollette di fornitori
+  /// diversi. Categoria, cartella e tag invece usano anche il significato.
   Guess? correspondent(String text) => _vote(text, (e) => e.correspondent);
-  Guess? type(String text) => _vote(text, (e) => e.type);
-  Guess? storagePath(String text) => _vote(text, (e) => e.path);
+  Guess? type(String text, {Float32List? meaning}) => _vote(text, (e) => e.type, meaning: meaning);
+  Guess? storagePath(String text, {Float32List? meaning}) => _vote(text, (e) => e.path, meaning: meaning);
 
   /// I tag che hanno almeno metà dei vicini (pesati) e almeno due esempi.
-  List<String> tags(String text) {
+  List<String> tags(String text, {Float32List? meaning}) {
     if (trainedOn < _minTraining) return const [];
-    final near = _neighbours(text);
+    final near = _neighbours(text, meaning: meaning);
     if (near.isEmpty) return const [];
     var total = 0.0;
     final weight = <String, double>{};

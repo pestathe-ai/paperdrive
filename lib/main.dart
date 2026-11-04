@@ -32,7 +32,7 @@ class PaperdriveApp extends StatelessWidget {
     return AppScope(
       state: state,
       child: MaterialApp(
-        title: 'D. Paper Lab',
+        title: 'D. PaperLink Lab',
         debugShowCheckedModeBanner: false,
         locale: const Locale('it'),
         supportedLocales: const [Locale('it'), Locale('en')],

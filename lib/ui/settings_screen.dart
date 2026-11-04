@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/models.dart';
 import '../services/ai_assistant.dart';
+import '../services/meaning_service.dart' show MeaningService;
 import '../state/app_state.dart';
 import 'widgets.dart';
 
@@ -153,6 +154,107 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.error_outline),
             title: const Text('Ultimo errore dell\'AI'),
             subtitle: Text(ai.error!, maxLines: 4, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _enableMeaning(AppState app) async {
+    final ok = await confirm(
+      context,
+      title: 'Scaricare la rete della somiglianza?',
+      message: 'EmbeddingGemma 2 di Google, gratuita · ${MeaningService.sizeLabel}.\n\n'
+          'Poi calcola una "impronta del significato" per ogni documento (pochi secondi ogni cento '
+          'documenti). Usa il Wi-Fi. Tutto resta sul telefono.',
+      ok: 'Scarica',
+    );
+    if (!ok) return;
+    try {
+      await app.enableMeaning();
+      if (mounted) showMessage(context, 'Fatto: ora riconosce i documenti anche dal significato');
+    } catch (e) {
+      if (mounted) showMessage(context, 'Download non riuscito: ${app.meaningNet.error ?? e}');
+    }
+  }
+
+  Widget _meaningSection(AppState app, ThemeData theme) {
+    final s = app.settings;
+    final net = app.meaningNet;
+    final idx = app.indexing;
+    final count = app.meanings.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text('Somiglianza per significato', style: theme.textTheme.titleMedium),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            'Una piccola rete neurale capisce di cosa parla un documento, anche con parole diverse '
+            '("idraulico per il garage" somiglia ai documenti del "box"). Così l\'app trova meglio la '
+            'categoria e la cartella guardando i documenti che hai già sistemato. Il mittente invece '
+            'resta riconosciuto dalle parole.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+        ListTile(
+          leading: Icon(s.meaningEnabled ? Icons.check_circle : Icons.hub_outlined,
+              color: s.meaningEnabled ? theme.colorScheme.primary : null),
+          title: const Text('EmbeddingGemma 2 (Google)'),
+          subtitle: Text(s.meaningEnabled
+              ? '${MeaningService.sizeLabel} · scaricata · $count documenti riconosciuti'
+              : '${MeaningService.sizeLabel} · gratuita · funziona senza internet'),
+          trailing: s.meaningEnabled
+              ? IconButton(
+                  tooltip: 'Cancella dal telefono',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: net.downloading || idx != null
+                      ? null
+                      : () async {
+                          final ok = await confirm(context,
+                              title: 'Cancellare la rete della somiglianza?',
+                              message: 'L\'app torna a confrontare i documenti solo per parole.',
+                              ok: 'Cancella',
+                              danger: true);
+                          if (ok) await app.disableMeaning();
+                        },
+                )
+              : TextButton(
+                  onPressed: net.downloading ? null : () => _enableMeaning(app),
+                  child: const Text('Scarica'),
+                ),
+        ),
+        if (net.downloading)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+            child: Row(
+              children: [
+                Expanded(child: LinearProgressIndicator(value: (net.progress ?? 0) / 100)),
+                const SizedBox(width: 12),
+                Text('${net.progress ?? 0}%'),
+                TextButton(onPressed: net.cancelDownload, child: const Text('Annulla')),
+              ],
+            ),
+          ),
+        if (idx != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LinearProgressIndicator(value: idx.$2 == 0 ? null : idx.$1 / idx.$2),
+                const SizedBox(height: 4),
+                Text('Sto leggendo i documenti: ${idx.$1} di ${idx.$2}', style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+        if (net.error != null && !net.downloading)
+          ListTile(
+            leading: const Icon(Icons.error_outline),
+            title: const Text('Ultimo errore'),
+            subtitle: Text(net.error!, maxLines: 4, overflow: TextOverflow.ellipsis),
           ),
       ],
     );
@@ -378,12 +480,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(height: 32),
           ListenableBuilder(listenable: app.ai, builder: (context, _) => _aiSection(app, theme)),
           const Divider(height: 32),
+          ListenableBuilder(listenable: app.meaningNet, builder: (context, _) => _meaningSection(app, theme)),
+          const Divider(height: 32),
           ListTile(
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.asset('assets/logo.png', width: 36, height: 36),
             ),
-            title: const Text('D. Paper Lab'),
+            title: const Text('D. PaperLink Lab'),
             subtitle: Text(
               'un\'app Dom Studio\n'
               '${app.archive.activeDocuments.length} documenti · '

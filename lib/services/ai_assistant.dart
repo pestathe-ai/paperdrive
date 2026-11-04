@@ -6,6 +6,18 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/ai.dart';
 
+Future<void>? _edgeAi;
+
+/// Avvia il motore dei modelli sul telefono, una volta sola, sia per il
+/// modello linguistico sia per la rete della somiglianza.
+Future<void> edgeAiReady() => _edgeAi ??= FlutterEdgeAi.initialize(
+      inferenceEngines: [LiteRtLmEngine()],
+      embeddingBackends: [LiteRtEmbeddingBackend()],
+    ).catchError((Object e) {
+      _edgeAi = null;
+      throw e;
+    });
+
 /// Un modello linguistico scaricabile sul telefono.
 class AiModelOption {
   const AiModelOption({
@@ -67,7 +79,7 @@ class AiAssistant extends ChangeNotifier {
 
   Future<void> _init() async {
     if (_initialized) return;
-    await FlutterEdgeAi.initialize(inferenceEngines: [LiteRtLmEngine()]);
+    await edgeAiReady();
     _initialized = true;
   }
 

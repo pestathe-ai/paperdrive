@@ -1,4 +1,4 @@
-# D. Paper Lab
+# D. PaperLink Lab
 
 *un'app Dom Studio* (nome interno del progetto: Paperdrive).
 
@@ -52,9 +52,16 @@ già chiaro resta il titolo. L'app impara da questi documenti come classifichi e
 Quando correggi categoria, mittente o titolo di un documento, l'app impara: i documenti simili
 successivi vengono classificati e rinominati allo stesso modo.
 
+### Somiglianza per significato (v0.20)
+
+Facoltativa, dalle Impostazioni: una piccola rete neurale gratuita
+(EmbeddingGemma 2 di Google, 165 MB) capisce di cosa parla ogni documento,
+così categoria e cartella si trovano anche quando le parole sono diverse da
+quelle dei documenti già sistemati. Tutto resta sul telefono.
+
 ### Motore di catalogazione (v0.19)
 
-Progettato da zero per D. Paper Lab (dettagli in [DESIGN.md](DESIGN.md)):
+Progettato da zero per D. PaperLink Lab (dettagli in [DESIGN.md](DESIGN.md)):
 - **Regole a parole chiave** sulle parole del testo: Una qualsiasi parola, Tutte le parole, Frase esatta, Espressione regolare e **Tollerante** (accetta parole con errori dell'OCR).
 - **Apprendimento per esempi**: per un documento nuovo guarda i documenti già sistemati più simili e usa la risposta su cui sono d'accordo. Funziona già con pochi esempi, ogni correzione conta subito, e si sa sempre su quali documenti si è basato.
 - **Ordine di fiducia**: regole tue > ciò che ha imparato (se è sicuro) > regole predefinite > AI sul telefono per i casi liberi.
