@@ -367,7 +367,10 @@ SubfolderDecision applySubfolder(
   final (best, bestScore) = ranked.first;
   final second = ranked.length > 1 ? ranked[1].$2 : 0.0;
   final clear = bestScore - second >= 0.15;
-  if ((bestScore >= 0.55 && clear) || (!ask && bestScore >= 0.4 && clear)) {
+  // Con una sola cartella possibile serve più sicurezza; con più cartelle
+  // basta che una sia nettamente migliore delle altre.
+  final need = ranked.length > 1 ? 0.55 : 0.6;
+  if ((bestScore >= need && clear) || (!ask && bestScore >= 0.4 && clear)) {
     d.storagePathId = best.id;
     return SubfolderDecision.assigned;
   }

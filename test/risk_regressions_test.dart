@@ -152,7 +152,7 @@ void main() {
 
     test('un documento sui lavori del box va nella cartella del box', () {
       final a = casa();
-      final d = Document(title: 'x', content: 'fattura lavori saracinesca box autorimessa', typeId: 'st-casa');
+      final d = Document(title: 'x', content: 'fattura lavori saracinesca box autorimessa impermeabilizzazione preventivo', typeId: 'st-casa');
       a.documents[d.id] = d;
       expect(applySubfolder(a, d), SubfolderDecision.assigned);
       expect(a.storagePath(d.storagePathId)!.name, contains('Box'));
