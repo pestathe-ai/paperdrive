@@ -9,24 +9,18 @@ jobs:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
-      - name: Model files
-        run: |
-          for u in \
-            https://huggingface.co/tibaf/embeddinggemma/resolve/main/embeddinggemma-300M_seq256_mixed-precision.tflite \
-            https://huggingface.co/tibaf/embeddinggemma/resolve/main/sentencepiece_for_embeddinggemma.model \
-            https://huggingface.co/litert-community/embeddinggemma-300m/resolve/main/sentencepiece.model \
-            https://huggingface.co/kontextdev/embeddinggemma-300m-litertlm/resolve/main/models/embeddinggemma-300m.litertlm ; do
-            echo "== $u"; curl -sIL "$u" | grep -iE '^HTTP|content-length' ; done
-          curl -s https://huggingface.co/api/models/tibaf/embeddinggemma | head -c 1500; echo
       - name: API
         run: |
-          mkdir p && cd p && flutter create -q --platforms android x && cd x
-          flutter pub add flutter_edge_ai flutter_edge_ai_litertlm flutter_edge_ai_embeddings >/dev/null
+          mkdir p && cd p && flutter create --platforms android x && cd x
+          flutter pub add flutter_edge_ai flutter_edge_ai_litertlm flutter_edge_ai_embeddings > /dev/null 2>&1 || flutter pub add flutter_edge_ai flutter_edge_ai_litertlm flutter_edge_ai_embeddings
           grep -A3 "flutter_edge_ai" pubspec.lock | grep -E "name|version" 
-          C=$(dirname $(flutter pub deps --json >/dev/null; find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name 'flutter_edge_ai_embeddings-*' | head -1))
           for pkg in flutter_edge_ai_embeddings flutter_edge_ai flutter_edge_ai_litertlm; do
             d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "$pkg-*" | sort | tail -1); echo "##### $d"
-            grep -rn -E "installEmbedder|class .*Embed|getActiveEmbedder|Future<.*> embed|enum TaskType|TaskType\.|modelFromNetwork|tokenizerFromNetwork|EmbeddingInput\.|hasActiveEmbedder|uninstallEmbedder|withProgress|embedBatch|class Embedding|List<double>" $d/lib | grep -v "^\s*//" | head -80
+            grep -rn -E "installEmbedder|class .*Embed|getActiveEmbedder|Future<.*> embed|enum TaskType|TaskType\.|modelFromNetwork|tokenizerFromNetwork|EmbeddingInput\.|hasActiveEmbedder|uninstallEmbedder|withProgress|embedBatch|class Embedding|List<double>" $d/lib | grep -v "^\s*//" | head -120
           done
           d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "flutter_edge_ai_embeddings-*" | sort | tail -1)
           sed -n 1,200p $d/README.md
+          for pkg in flutter_edge_ai flutter_edge_ai_litertlm; do d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "$pkg-*" | sort | tail -1); grep -n -i -B2 -A30 "embedd" $d/README.md | head -150; done
+          d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "flutter_edge_ai-*" | sort | tail -1); f=$(grep -rl "installEmbedder" $d/lib | head -3); for x in $f; do echo "#### $x"; grep -n -A12 -E "installEmbedder|class EmbedderInstall|getActiveEmbedder|embed\(" $x | head -120; done
+          grep -rn -A15 "enum TaskType" ~/.pub-cache/hosted/pub.dev/flutter_edge_ai*/lib | head -40
+          grep -rn -B3 -A25 "abstract class EmbeddingModel\|class EmbeddingModel\|abstract class Embedder\b\|abstract interface class Embed" ~/.pub-cache/hosted/pub.dev/flutter_edge_ai*/lib | head -80
