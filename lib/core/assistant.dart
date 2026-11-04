@@ -322,7 +322,8 @@ AskQuery mergeAskResponse(Archive a, AskQuery base, String raw) {
   }
   base.specialty ??= s('specialita');
   final hk = s('tiposanitario');
-  if (base.healthKind == null && hk != null) {
+  // "Quanto ho speso" riguarda le spese, non referti o ricette.
+  if (base.healthKind == null && hk != null && base.intent != AskIntent.total) {
     final n = normalize(hk);
     if (n.startsWith('refert')) base.healthKind = 'Referti';
     if (n.startsWith('prescri') || n.startsWith('ricett')) base.healthKind = 'Prescrizioni';
@@ -416,7 +417,10 @@ List<AskHit> runAsk(Archive a, AskQuery q, SearchIndex index) {
 
 /// Importo in euro letto dal testo ("1.234,56 €" → 1234.56).
 double? amountOf(Document d) {
-  final s = detectAmount(d.content);
+  // Se il testo non lo dice chiaramente, vale la cifra alla fine del
+  // titolo ("Ticket farmacia 18,94"), che l'utente o l'AI hanno scritto.
+  final tm = RegExp(r'(\d+)[.,](\d{2})\s*(?:€|euro|eur)?$', caseSensitive: false).firstMatch(d.title.trim());
+  final s = detectAmount(d.content) ?? (tm == null ? null : '${tm[1]},${tm[2]}');
   if (s == null) return null;
   final m = RegExp(r'(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})').firstMatch(s);
   if (m == null) return double.tryParse(s.replaceAll(RegExp(r'[^\d.]'), ''));

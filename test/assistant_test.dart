@@ -114,6 +114,11 @@ void main() {
     expect(text, contains('Fattura: 100,00 €'));
   });
 
+  test('importo dal titolo se il testo non lo dice', () {
+    expect(amountOf(Document(title: 'Ticket farmacia 18.94', content: 'illeggibile')), 18.94);
+    expect(amountOf(Document(title: 'Fattura farmacia 47,82', content: '')), 47.82);
+  });
+
   test('"documenti" non vuol dire la categoria Documenti personali', () {
     final a = archive();
     final q = parseQuestion(a, 'trovami i documenti di Maria', now: now);

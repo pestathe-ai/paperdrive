@@ -544,6 +544,24 @@ String? _normalizeAmount(String raw) {
   return '$b,$dec €';
 }
 
+/// La cifra più alta tra quelle che compaiono almeno due volte.
+String? _repeatedMax(String t) {
+  final counts = <int, int>{};
+  final raw = <int, String>{};
+  for (final m in RegExp(r'(?<![\d.,\-])(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2})(?![\d%,]|\.\d)').allMatches(t)) {
+    final s = m[1]!;
+    final norm = s.contains(',') ? s.replaceAll('.', '').replaceAll(',', '.') : s;
+    final cents = ((double.tryParse(norm) ?? 0) * 100).round();
+    if (cents <= 0) continue;
+    counts[cents] = (counts[cents] ?? 0) + 1;
+    raw[cents] = s;
+  }
+  final repeated = counts.entries.where((e) => e.value >= 2).map((e) => e.key).toList();
+  if (repeated.isEmpty) return null;
+  repeated.sort();
+  return _normalizeAmount(raw[repeated.last]!);
+}
+
 /// Parole che precedono l'importo principale, dalla più affidabile.
 const List<String> _amountLabels = [
   r'importo\s+pagato',
@@ -566,6 +584,14 @@ const String _number = r'(\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2}(?!\d
 /// "importo pagato", "totale da pagare", "importo".
 String? detectAmount(String text) {
   final t = text.replaceAll(' ', ' ');
+  // Scontrini ("documento commerciale"): l'OCR legge le colonne separate,
+  // quindi la cifra non sta accanto a "TOTALE COMPLESSIVO". Il totale è la
+  // cifra più alta che compare più volte (totale, importo pagato, bancomat…);
+  // i contanti dati e il resto compaiono una volta sola.
+  if (RegExp(r'documento\s+commerciale|totale\s+complessivo|scontrino', caseSensitive: false).hasMatch(t)) {
+    final total = _repeatedMax(t);
+    if (total != null) return total;
+  }
   for (final label in _amountLabels) {
     // Sulla stessa riga, dopo l'etichetta (al massimo qualche parola in mezzo).
     final m = RegExp(

@@ -548,6 +548,57 @@ void main() {
       expect(detectKind('ESTRATTO CONTO al 30/09 ... bonifico a favore di X'), 'Estratto conto');
       expect(detectNumber('FATTURA N. 2024/123 del 3 marzo'), '2024/123');
       expect(detectAmount('Totale da pagare 89.90'), '89,90 €');
+      // Scontrini della farmacia come li legge l'OCR: colonne separate.
+      const farmacia1 = '''FARMACIA ESEMPIO SRL
+DOCUMENTO COMMERCIALE
+di vendita o prestazione
+DESCRIZIONE
+1 x 4,00
+TICKET-FARMACO
+2 x 1,97
+FARMACO 043670013
+1 x 4,00
+TICKET-FARMACO
+1 x 7,00
+FARMACO 041467111
+TOTALE COMPLESSIVO
+di cui IVA
+Pagamento elettronico
+Importo pagato
+IVA Prezzo(€)
+VI* 4,00
+VI* 3,94
+VI* 4,00
+VI* 7,00
+18,94
+0,00
+18,94
+18,94
+BANCOMAT
+TIPI SPESA 730 ONLINE 18,94
+TICKET FARMACO
+8,00
+10,94
+TOTALE DETRAIBILE 18,94''';
+      expect(detectAmount(farmacia1), '18,94 €');
+      const farmacia2 = '''DOCUMENTO COMMERCIALE
+1 x 16,95 FARMACO 10,00% 16,95
+1 x 14,95 DISP MED UNGUENTO 10,00% 14,95
+1 x 13,95 DISP MED GOCCE 0,4% 22,00% 13,95
+PARAFARMACO 22,00% 0,05 -0,05
+TOTALE COMPLESSIVO
+di cui IVA
+47,82
+5,60
+Pagamento elettronico
+Importo pagato
+47,82
+47,82
+BANCOMAT 47,82
+CONTANTE 50,00
+FARMACO 18,92
+DISPOSITIVO MEDICO 28,90''';
+      expect(detectAmount(farmacia2), '47,82 €');
     });
 
     test('nomi di file generici o descrittivi', () {
