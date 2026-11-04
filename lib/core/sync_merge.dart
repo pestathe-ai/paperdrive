@@ -180,7 +180,9 @@ FilePlan planFiles(
     onDrive.add(name);
     final local = localFiles.contains(name);
     final remote = remoteFiles.contains(name);
-    if (remote) primaryRemote.add(d.id);
+    // Già su Drive, o caricato in questa stessa sincronizzazione (i
+    // caricamenti avvengono prima delle eliminazioni, e un errore le ferma).
+    if (remote || (local && canWrite)) primaryRemote.add(d.id);
     if (remote || local) primaryAnywhere.add(d.id);
     if (local && !remote && canWrite) upload.add(name);
     // Con "solo elenco sul telefono" i file restano su Drive finché non servono.
@@ -188,7 +190,9 @@ FilePlan planFiles(
   }
   bool known(String name) => merged.documents.containsKey(docIdOfFile(name));
   for (final name in remoteFiles) {
-    if (canWrite && known(name) && !onDrive.contains(name) && primaryRemote.contains(docIdOfFile(name))) {
+    final id = docIdOfFile(name);
+    final gone = merged.documents[id]?.deleted ?? false;
+    if (canWrite && known(name) && !onDrive.contains(name) && (gone || primaryRemote.contains(id))) {
       deleteRemote.add(name);
     }
   }
