@@ -212,9 +212,7 @@ class Storage {
 
   /// Le password delle caselle stanno nel portachiavi protetto di Android,
   /// non nel file.
-  static const FlutterSecureStorage _secrets = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static const FlutterSecureStorage _secrets = FlutterSecureStorage();
   static String _passKey(String accountId) => 'mail-pass-$accountId';
 
   Future<MailConfig> loadMail() async {
