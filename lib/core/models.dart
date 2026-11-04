@@ -520,8 +520,12 @@ String _dateOnly(DateTime d) => '${d.year}-${_two(d.month)}-${_two(d.day)}';
 DateTime _parseDate(String? s) {
   if (s == null) return DateTime.now();
   final p = s.split('-');
-  if (p.length != 3) return DateTime.tryParse(s) ?? DateTime.now();
-  return DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+  final y = p.length == 3 ? int.tryParse(p[0]) : null;
+  final m = p.length == 3 ? int.tryParse(p[1]) : null;
+  final d = p.length == 3 ? int.tryParse(p[2]) : null;
+  // Una data rovinata non deve bloccare la lettura di tutto l'indice.
+  if (y == null || m == null || d == null) return DateTime.tryParse(s) ?? DateTime.now();
+  return DateTime(y, m, d);
 }
 
 /// Formato italiano gg/mm/aaaa.
@@ -701,6 +705,7 @@ class StoragePath with Syncable implements Matchable {
     this.caseInsensitive = true,
     int? modified,
     this.deleted = false,
+    this.learned,
   })  : id = id ?? newId(),
         modified = modified ?? nowMs();
 
@@ -708,6 +713,10 @@ class StoragePath with Syncable implements Matchable {
   final String id;
   @override
   String name;
+
+  /// Creato dall'app spostando i file su Drive (vero) o da te (falso).
+  /// Null per i percorsi delle versioni precedenti.
+  bool? learned;
 
   /// Es. `{document_type}/{created_year}/{created} {title}`: l'ultima parte
   /// è il nome del file.
@@ -732,6 +741,7 @@ class StoragePath with Syncable implements Matchable {
         'ci': caseInsensitive,
         'mod': modified,
         if (deleted) 'del': true,
+        if (learned != null) 'lrn': learned,
       };
 
   factory StoragePath.fromJson(Map<String, dynamic> j) => StoragePath(
@@ -744,6 +754,7 @@ class StoragePath with Syncable implements Matchable {
         caseInsensitive: j['ci'] as bool? ?? true,
         modified: (j['mod'] as num?)?.toInt() ?? 0,
         deleted: j['del'] as bool? ?? false,
+        learned: j['lrn'] as bool?,
       );
 }
 

@@ -172,12 +172,15 @@ String pathTemplateFor(Archive a, Document d) {
     empty: (k) => _emptyNames[k] ?? '',
     clean: (v) => v.replaceAll(RegExp(r'[/\\]'), '-'),
   );
-  final parts = rendered
-      .split('/')
+  // L'ultima parte è sempre il nome del file, anche se viene vuota (allora
+  // vale il titolo): una cartella non deve diventare il nome.
+  final raw = rendered.split('/');
+  var name = safeName(raw.last);
+  final parts = raw
+      .sublist(0, raw.length - 1)
       .map((p) => safeName(p))
       .where((p) => p.isNotEmpty)
       .toList();
-  var name = parts.isEmpty ? '' : parts.removeLast();
   if (name.isEmpty) name = safeName(d.title.isEmpty ? d.id : d.title);
   var folders = parts.take(6).toList();
   // Cartella scelta a mano: si rispetta esattamente.

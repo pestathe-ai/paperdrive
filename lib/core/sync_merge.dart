@@ -3,6 +3,8 @@
 /// quindi si propagano anch'esse.
 library;
 
+import 'dart:convert';
+
 import 'archive.dart';
 import 'models.dart';
 
@@ -39,11 +41,27 @@ Map<String, T> _mergeMap<T extends Syncable>(
     } else if (l.modified > rm.modified) {
       out[id] = l;
       r.fromLocal++;
-    } else {
+    } else if (l.deleted != rm.deleted) {
       // Stessa data: una cancellazione vince.
-      out[id] = rm.deleted && !l.deleted ? rm : l;
-      if (l.deleted && !rm.deleted) r.fromLocal++;
-      if (rm.deleted && !l.deleted) r.fromRemote++;
+      out[id] = rm.deleted ? rm : l;
+      if (l.deleted) r.fromLocal++;
+      if (rm.deleted) r.fromRemote++;
+    } else {
+      // Stessa data ma contenuto diverso: vince la stessa versione su tutti
+      // i telefoni (confronto del contenuto), così finiscono d'accordo.
+      final lj = jsonEncode((l as dynamic).toJson());
+      final rj = jsonEncode((rm as dynamic).toJson());
+      if (lj != rj) {
+        if (lj.compareTo(rj) >= 0) {
+          out[id] = l;
+          r.fromLocal++;
+        } else {
+          out[id] = rm;
+          r.fromRemote++;
+        }
+      } else {
+        out[id] = l;
+      }
     }
   }
   return out;
@@ -65,7 +83,45 @@ Map<String, T> _mergeMap<T extends Syncable>(
   );
   if (remote.config.modified > local.config.modified) r.fromRemote++;
   if (local.config.modified > remote.config.modified) r.fromLocal++;
+  _keepNewestFiles(merged, local, remote, r);
   return (merged, r);
+}
+
+/// Il file di un documento non torna mai indietro: se un altro telefono ha
+/// già rifatto le pagine o il PDF/A (revisione più alta), quella revisione
+/// resta anche se vince la versione con il titolo cambiato più di recente.
+/// Altrimenti il file nuovo verrebbe tolto da Drive come "vecchio".
+void _keepNewestFiles(Archive merged, Archive local, Archive remote, MergeReport r) {
+  for (final e in merged.documents.entries) {
+    final w = e.value;
+    final l = local.documents[e.key];
+    final rm = remote.documents[e.key];
+    if (l == null || rm == null || w.deleted) continue;
+    final other = identical(w, l) ? rm : l;
+    var changed = false;
+    if (other.fileRev > w.fileRev) {
+      w
+        ..fileRev = other.fileRev
+        ..checksum = other.checksum
+        ..fileSize = other.fileSize
+        ..pageCount = other.pageCount
+        ..content = other.content;
+      changed = true;
+    }
+    if (other.archiveRev > w.archiveRev) {
+      w
+        ..archiveRev = other.archiveRev
+        ..archiveSize = other.archiveSize;
+      changed = true;
+    }
+    if (changed) {
+      if (identical(w, l)) {
+        r.fromRemote++;
+      } else {
+        r.fromLocal++;
+      }
+    }
+  }
 }
 
 /// Piano dei file da spostare dopo l'unione (nomi di file).
@@ -112,6 +168,10 @@ FilePlan planFiles(
   final deleteLocal = <String>[];
   final expected = <String>{};
   final onDrive = <String>{};
+  // Documenti il cui file principale esiste già su Drive / da qualche parte:
+  // solo allora si possono togliere le copie vecchie (mai l'ultima copia).
+  final primaryRemote = <String>{};
+  final primaryAnywhere = <String>{};
   for (final d in merged.documents.values) {
     if (d.deleted) continue;
     expected.addAll(d.fileNames);
@@ -120,18 +180,22 @@ FilePlan planFiles(
     onDrive.add(name);
     final local = localFiles.contains(name);
     final remote = remoteFiles.contains(name);
+    if (remote) primaryRemote.add(d.id);
+    if (remote || local) primaryAnywhere.add(d.id);
     if (local && !remote && canWrite) upload.add(name);
     // Con "solo elenco sul telefono" i file restano su Drive finché non servono.
     if (remote && !local && downloadMissing) download.add(name);
   }
   bool known(String name) => merged.documents.containsKey(docIdOfFile(name));
   for (final name in remoteFiles) {
-    if (canWrite && known(name) && !onDrive.contains(name)) {
+    if (canWrite && known(name) && !onDrive.contains(name) && primaryRemote.contains(docIdOfFile(name))) {
       deleteRemote.add(name);
     }
   }
   for (final name in localFiles) {
-    if (known(name) && !expected.contains(name)) deleteLocal.add(name);
+    final id = docIdOfFile(name);
+    final gone = merged.documents[id]?.deleted ?? false;
+    if (known(name) && !expected.contains(name) && (gone || primaryAnywhere.contains(id))) deleteLocal.add(name);
   }
   upload.sort();
   download.sort();

@@ -10,7 +10,9 @@ import 'models.dart';
 double? parseEuro(String? raw) {
   if (raw == null) return null;
   final s = raw.replaceAll(RegExp(r'[€\s]|eur(o)?', caseSensitive: false), '');
-  final it = RegExp(r'^-?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{1,2}))?$').firstMatch(s);
+  // Un importo negativo (nota di credito, rimborso) non è una spesa.
+  if (s.startsWith('-')) return null;
+  final it = RegExp(r'^(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{1,2}))?$').firstMatch(s);
   if (it != null) {
     final v = double.tryParse('${it[1]!.replaceAll('.', '')}.${it[2] ?? '0'}');
     return v == null || v <= 0 ? null : v;
@@ -28,8 +30,12 @@ double? parseEuro(String? raw) {
 double? readAmount(Document d) {
   final fromText = parseEuro(detectAmount(d.content));
   if (fromText != null) return fromText;
-  final tm = RegExp(r'(\d+)[.,](\d{2})\s*(?:€|euro|eur)?$', caseSensitive: false).firstMatch(d.title.trim());
-  return tm == null ? null : parseEuro('${tm[1]},${tm[2]}');
+  final tm = RegExp(r'(?<![\d.,-])(\d{1,3}(?:\.\d{3})+,\d{2}|\d+[.,]\d{2})\s*(?:€|euro|eur)?$', caseSensitive: false)
+      .firstMatch(d.title.trim());
+  if (tm == null) return null;
+  final v = tm[1]!;
+  // "18.94" (punto decimale) → "18,94"; "1.234,56" resta com'è.
+  return parseEuro(RegExp(r'^\d+\.\d{2}$').hasMatch(v) ? v.replaceFirst('.', ',') : v);
 }
 
 /// La cifra compare davvero nel documento (l'AI non deve inventarla).

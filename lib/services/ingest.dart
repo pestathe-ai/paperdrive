@@ -557,10 +557,16 @@ class Ingestor {
   Future<void> saveArchive(Document doc, List<OcrPage> pages) async {
     final path = await buildArchivePdf(pages, title: doc.title);
     final old = doc.hasArchive ? storage.docFile(doc.archiveFileName) : null;
-    doc.archiveRev += 1;
-    final target = storage.docFile(doc.archiveFileName);
-    await File(path).copy(target.path);
-    doc.archiveSize = await target.length();
+    // Prima il file completo, poi la nuova revisione (una sincronizzazione
+    // in corso non deve vedere un file a metà).
+    final target = storage.docFile('${doc.id}.archive${doc.archiveRev + 1}.pdf');
+    final part = File('${target.path}.part');
+    await File(path).copy(part.path);
+    await part.rename(target.path);
+    final size = await target.length();
+    doc
+      ..archiveRev += 1
+      ..archiveSize = size;
     if (old != null && await old.exists()) await old.delete();
   }
 

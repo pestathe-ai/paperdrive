@@ -236,7 +236,7 @@ class DriveSync {
         spaces: 'drive',
         pageSize: 1000,
         pageToken: token,
-        $fields: 'nextPageToken, files(id,name,parents,properties,version,mimeType)',
+        $fields: 'nextPageToken, files(id,name,parents,properties,version,mimeType,md5Checksum)',
       );
       out.addAll(res.files ?? const <drive.File>[]);
       token = res.nextPageToken;
@@ -299,10 +299,12 @@ class DriveSync {
   drive.Media _media(List<int> bytes, String type) =>
       drive.Media(Stream.value(bytes), bytes.length, contentType: type);
 
-  /// Elimina un file; se non è mio (archivio condiviso) lo toglie dalla cartella.
+  /// Toglie un file: va nel cestino di Drive (recuperabile per 30 giorni),
+  /// mai eliminato per sempre. Se non è mio (archivio condiviso) lo toglie
+  /// solo dalla cartella.
   Future<void> _remove(drive.DriveApi api, _Remote f) async {
     try {
-      await api.files.delete(f.id);
+      await api.files.update(drive.File()..trashed = true, f.id, $fields: 'id');
     } on drive.DetailedApiRequestError catch (e) {
       if (e.status == 404) return;
       if (e.status == 403) {
@@ -333,8 +335,13 @@ class DriveSync {
         continue;
       }
       final p = parent;
-      final id = await (_creating[key] ??= _findOrCreate(api, p, seg.trim()));
-      _creating.remove(key);
+      final String id;
+      try {
+        id = await (_creating[key] ??= _findOrCreate(api, p, seg.trim()));
+      } finally {
+        // Anche se la creazione fallisce: la prossima volta si riprova.
+        _creating.remove(key);
+      }
       _folders[key] = id;
       parent = id;
     }
@@ -494,8 +501,43 @@ class DriveSync {
 
   /// Impronta del percorso (le proprietà di Drive sono corte): serve a
   /// capire se l'utente ha spostato o rinominato una cartella intera.
+  /// Le cartelle si confrontano come le cerca l'app ([folderKey]: senza
+  /// accenti né spazi in più), così "Sanita" e "Sanità" sono la stessa.
   static String _pathKey(List<String> folders) =>
+      md5.convert(utf8.encode(folders.map(folderKey).join('/'))).toString().substring(0, 16);
+
+  /// Impronta delle versioni precedenti (per i file già su Drive).
+  static String _pathKeyOld(List<String> folders) =>
       md5.convert(utf8.encode(folders.map((f) => f.trim().toLowerCase()).join('/'))).toString().substring(0, 16);
+
+  /// La cartella sta dentro l'archivio (risalendo al massimo 12 livelli).
+  final Map<String, bool> _inside = {};
+  Future<bool> _insideRoot(drive.DriveApi api, String? folderId, String root) async {
+    var id = folderId;
+    final seen = <String>[];
+    for (var i = 0; i < 12 && id != null; i++) {
+      if (id == root) break;
+      final known = _inside[id];
+      if (known != null) {
+        for (final s in seen) {
+          _inside[s] = known;
+        }
+        return known;
+      }
+      seen.add(id);
+      try {
+        final f = await api.files.get(id, $fields: 'id,parents') as drive.File;
+        id = (f.parents ?? const []).firstOrNull;
+      } catch (_) {
+        id = null;
+      }
+    }
+    final ok = id == root;
+    for (final s in seen) {
+      _inside[s] = ok;
+    }
+    return ok;
+  }
 
   /// Esegue la sincronizzazione completa e restituisce l'archivio unito.
   Future<SyncOutcome> sync(
@@ -566,20 +608,28 @@ class DriveSync {
             "properties has { key='pdArchive' and value='${_q(root)}' } and trashed = true",
           );
           for (final f in trashed) {
+           try {
             final name = _logicalName(f.properties);
             if (name == null || f.id == null || remoteFiles.containsKey(name)) continue;
             final d = merged.documents[docIdOfFile(name)];
             if (d == null || d.deleted || d.inTrash || !d.fileNames.contains(name)) continue;
             // Spostato con "copia e cancella" (es. da computer): c'è una copia
             // con lo stesso nome? Allora è uno spostamento, non una cancellazione.
-            final copies = (await _listAll(
+            // Vale solo una copia identica (stesso contenuto) che sta dentro
+            // l'archivio: un file omonimo altrove non si tocca.
+            drive.File? copy;
+            for (final c in await _listAll(
               api,
               "name = '${_q(f.name ?? '')}' and trashed = false and mimeType != '$folderMime'",
-            ))
-                .where((c) => c.id != null && (c.properties ?? const {})['pdDoc'] == null)
-                .toList();
-            if (copies.isNotEmpty) {
-              final c = copies.first;
+            )) {
+              if (c.id == null || (c.properties ?? const {})['pdDoc'] != null) continue;
+              if (f.md5Checksum == null || c.md5Checksum != f.md5Checksum) continue;
+              if (!await _insideRoot(api, (c.parents ?? const []).firstOrNull, root)) continue;
+              copy = c;
+              break;
+            }
+            if (copy != null) {
+              final c = copy;
               final props = <String, String?>{...?f.properties};
               props['pdName'] ??= f.name;
               props['pdParent'] ??= (f.parents ?? const []).firstOrNull;
@@ -596,6 +646,9 @@ class DriveSync {
               ..log('Spostato nel cestino (cancellato su Google Drive)')
               ..touch();
             learned++;
+           } catch (_) {
+             // Un file che non si riesce a controllare non blocca gli altri.
+           }
           }
         } catch (_) {}
       }
@@ -676,7 +729,7 @@ class DriveSync {
             final lastPath = r.props['pdPath'];
             if (!moved && lastPath != null) {
               actual = await _pathFromRoot(api, root, r.parents.first);
-              folderChanged = actual != null && _pathKey(actual) != lastPath;
+              folderChanged = actual != null && _pathKey(actual) != lastPath && _pathKeyOld(actual) != lastPath;
             }
             if (!renamed && !moved && !folderChanged) continue;
             final folders = moved ? await _pathFromRoot(api, root, r.parents.first) : (folderChanged ? actual : null);

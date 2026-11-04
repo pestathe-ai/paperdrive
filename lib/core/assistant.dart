@@ -354,7 +354,7 @@ bool _passes(Archive a, Document d, AskQuery q, SearchIndex index) {
   if (q.healthKind != null && (d.customFields[healthKindFieldId] ?? '') != q.healthKind) return false;
   if (q.year != null && d.created.year != q.year) return false;
   if (q.from != null && d.created.isBefore(q.from!)) return false;
-  if (q.to != null && d.created.isAfter(q.to!.add(const Duration(days: 1)))) return false;
+  if (q.to != null && !d.created.isBefore(DateTime(q.to!.year, q.to!.month, q.to!.day + 1))) return false;
   return true;
 }
 

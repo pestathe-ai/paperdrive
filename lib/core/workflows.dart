@@ -273,9 +273,11 @@ String stripLeadingDate(String t) {
 /// comune)? Così nel nome del file non compare due volte.
 bool titleHasDate(String t, DateTime c) {
   final y = '${c.year}', m = _two(c.month), dd = _two(c.day);
+  // A parole intere: "5-3-2024" non deve trovarsi dentro "15-3-2024".
+  bool has(String x) => RegExp('(?<![0-9])${RegExp.escape(x)}(?![0-9])').hasMatch(t);
   for (final sep in ['-', '/', '.', '_', ' ']) {
-    if (t.contains('$dd$sep$m$sep$y') || t.contains('$y$sep$m$sep$dd')) return true;
-    if (t.contains('${c.day}$sep${c.month}$sep$y')) return true;
+    if (has('$dd$sep$m$sep$y') || has('$y$sep$m$sep$dd')) return true;
+    if (has('${c.day}$sep${c.month}$sep$y')) return true;
   }
   return false;
 }

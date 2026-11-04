@@ -163,10 +163,20 @@ class Storage {
 
   String tmpPath(String name) => p.join(tmpDir, name);
 
-  Future<void> _writeAtomic(File f, String data) async {
-    final tmp = File('${f.path}.tmp');
-    await tmp.writeAsString(data, flush: true);
-    await tmp.rename(f.path);
+  /// Scritture in coda, una alla volta per file: due salvataggi insieme non
+  /// possono mescolarsi né lasciare l'indice rovinato.
+  final Map<String, Future<void>> _writing = {};
+  int _tmpCounter = 0;
+
+  Future<void> _writeAtomic(File f, String data) {
+    final previous = _writing[f.path] ?? Future<void>.value();
+    final next = previous.catchError((Object _) {}).then((_) async {
+      final tmp = File('${f.path}.${++_tmpCounter}.tmp');
+      await tmp.writeAsString(data, flush: true);
+      await tmp.rename(f.path);
+    });
+    _writing[f.path] = next;
+    return next;
   }
 
   Future<Archive> loadArchive() async {
@@ -256,11 +266,16 @@ class Storage {
     return out;
   }
 
-  Future<void> clearTmp() async {
+  /// Svuota i file temporanei. Durante l'uso toglie solo quelli vecchi
+  /// ([all] solo all'avvio): un'altra importazione in corso potrebbe
+  /// usare quelli recenti.
+  Future<void> clearTmp({bool all = false}) async {
     final d = Directory(tmpDir);
     if (await d.exists()) {
+      final limit = DateTime.now().subtract(const Duration(hours: 2));
       await for (final e in d.list()) {
         try {
+          if (!all && (await e.stat()).modified.isAfter(limit)) continue;
           await e.delete(recursive: true);
         } catch (_) {}
       }

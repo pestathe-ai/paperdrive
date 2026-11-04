@@ -72,6 +72,9 @@ class MailImporter {
     final client = ImapClient(isLogEnabled: false);
     try {
       await client.connectToServer(a.host, a.port, isSecure: a.ssl);
+      // Senza SSL si passa a una connessione cifrata prima di mandare la
+      // password; se il server non lo permette, niente accesso.
+      if (!a.ssl) await client.startTls();
       await client.login(a.username, a.password);
       final boxes = await client.listMailboxes(recursive: true);
       return boxes.map((b) => b.path).toList()..sort();
@@ -100,6 +103,9 @@ class MailImporter {
       try {
         status?.call('Posta: connessione a ${account.name}…');
         await client.connectToServer(account.host, account.port, isSecure: account.ssl);
+      // Senza SSL si passa a una connessione cifrata prima di mandare la
+      // password; se il server non lo permette, niente accesso.
+      if (!account.ssl) await client.startTls();
         await client.login(account.username, account.password);
         for (final rule in rules) {
           try {

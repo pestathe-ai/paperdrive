@@ -19,6 +19,10 @@ class MeaningService extends ChangeNotifier {
   EmbeddingModel? _model;
   CancelToken? _cancel;
 
+  /// Calcoli in corso: il modello si chiude solo quando nessuno lo usa.
+  int _users = 0;
+  bool _releaseWhenIdle = false;
+
   /// Percentuale di download in corso, o null.
   int? progress;
   String? error;
@@ -88,6 +92,7 @@ class MeaningService extends ChangeNotifier {
   Future<Float32List?> embed(String text) async {
     var t = text.trim();
     if (t.isEmpty) return null;
+    _users++;
     try {
       final model = await _ensure();
       for (var attempt = 0; attempt < 4; attempt++) {
@@ -101,12 +106,22 @@ class MeaningService extends ChangeNotifier {
       }
     } catch (e) {
       error = '$e';
+    } finally {
+      _users--;
+      if (_users == 0 && _releaseWhenIdle) {
+        _releaseWhenIdle = false;
+        await release();
+      }
     }
     return null;
   }
 
-  /// Libera la memoria.
+  /// Libera la memoria (appena il modello non serve più a nessuno).
   Future<void> release() async {
+    if (_users > 0) {
+      _releaseWhenIdle = true;
+      return;
+    }
     final m = _model;
     _model = null;
     if (m != null) {

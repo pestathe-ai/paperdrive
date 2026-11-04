@@ -23,7 +23,11 @@ final RegExp _monthRe = RegExp(
 );
 
 bool _isMonth(String s) {
-  final t = s.trim();
+  var t = s.trim();
+  if (t.isEmpty) return false;
+  // "Marzo 2026", "03-2026", "2026 03": il mese con l'anno è una data.
+  final withYear = RegExp(r'^(?:(19|20)\d{2}\s*[-_. ]\s*)?(.+?)(?:\s*[-_. ]\s*(19|20)\d{2})?$').firstMatch(t);
+  if (withYear != null && (withYear[1] != null || withYear[3] != null)) t = withYear[2]!.trim();
   if (t.isEmpty) return false;
   final m = _monthRe.firstMatch(t);
   if (m == null) return false;
@@ -198,7 +202,7 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
         if (path == null) {
           // Niente classificatore: ci vanno solo i documenti molto simili
           // (applyLearnedFolder) o quelli che sposti tu.
-          path = StoragePath(name: custom.join(' / '), template: tpl);
+          path = StoragePath(name: custom.join(' / '), template: tpl, learned: true);
           a.storagePaths[path.id] = path;
         }
         if (d.storagePathId != path.id) {
@@ -317,8 +321,9 @@ SubfolderDecision applySubfolder(Archive a, Document d, {bool ask = true, String
 /// Una sottocartella creata spostando i file (percorso senza
 /// classificatore, con cartelle scritte per esteso).
 bool isLearnedPath(StoragePath p) =>
-    p.algorithm == MatchAlgorithm.none &&
-    p.template.split('/').any((seg) => seg.isNotEmpty && !seg.contains('{'));
+    p.learned ??
+    (p.algorithm == MatchAlgorithm.none &&
+        p.template.split('/').any((seg) => seg.isNotEmpty && !seg.contains('{')));
 
 /// Una sottocartella imparata vale solo per la sua categoria: un documento
 /// di un'altra categoria non ci finisce (es. un'iscrizione all'asilo nella

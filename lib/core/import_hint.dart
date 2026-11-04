@@ -50,6 +50,9 @@ List<String> meaningfulFolders(List<String> folders) {
     final n = normalize(f).replaceAll(RegExp(r'^\d+\s*[-_.]?\s*'), '').trim();
     if (f.isEmpty || _year.hasMatch(f) || RegExp(r'^[\d\s._-]+$').hasMatch(f)) continue;
     if (_months.contains(n) || _generic.contains(n)) continue;
+    // "Marzo 2023", "03-2023": il mese con l'anno è una data, non una categoria.
+    final noYear = n.replaceAll(RegExp(r'[\s._-]*(19|20)\d{2}[\s._-]*'), ' ').trim();
+    if (noYear != n && (_months.contains(noYear) || RegExp(r'^(0?[1-9]|1[0-2])$').hasMatch(noYear))) continue;
     // "2023 Tasse", "01 - Casa" → "Tasse", "Casa".
     out.add(f.replaceFirst(RegExp(r'^\d+\s*[-_.)]?\s*'), '').trim());
   }

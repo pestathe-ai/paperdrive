@@ -144,7 +144,7 @@ class AppState extends ChangeNotifier {
       if (d.amount == null && !d.amountEdited && fillAmount(d)) amounts++;
     }
     if (amounts > 0) await storage.saveArchive(archive);
-    await storage.clearTmp();
+    await storage.clearTmp(all: true);
     ready = true;
     notifyListeners();
     unawaited(_startup());
@@ -961,6 +961,11 @@ class AppState extends ChangeNotifier {
 
   /// Ripara subito le cartelle su Drive (doppie o vuote).
   Future<int> repairDriveFolders() async {
+    // Non durante una sincronizzazione: potrebbe togliere una cartella in
+    // cui si sta caricando un file.
+    while (syncing) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
     syncStatus = 'Riordino delle cartelle su Drive…';
     notifyListeners();
     try {
@@ -1101,6 +1106,8 @@ class AppState extends ChangeNotifier {
   }
 
   void saveStoragePath(StoragePath p) {
+    // Salvato da te nell'app: non è un percorso imparato.
+    p.learned = false;
     p.modified = nowMs();
     archive.storagePaths[p.id] = p;
     changed(entities: true);
@@ -1124,6 +1131,7 @@ class AppState extends ChangeNotifier {
     if (pages.isEmpty) throw Exception('Il documento deve avere almeno una pagina');
     busy = 'Modifica delle pagine…';
     notifyListeners();
+    void Function()? rollback;
     try {
       final before = d.toJson();
       final newPath = await ingestor.extractPages(
@@ -1132,9 +1140,26 @@ class AppState extends ChangeNotifier {
         rotations: {for (final (i, r) in pages) i: r},
       );
       final oldFile = fileOf(d);
-      d.fileRev += 1;
-      await File(newPath).copy(fileOf(d).path);
-      if (await oldFile.exists()) await oldFile.delete();
+      final oldRev = d.fileRev;
+      final oldArchiveRev = d.archiveRev;
+      // Prima il file completo, poi la nuova revisione: una sincronizzazione
+      // in corso non può caricare un file a metà.
+      final target = storage.docFile('${d.id}.v${oldRev + 1}.pdf');
+      final part = File('${target.path}.part');
+      await File(newPath).copy(part.path);
+      await part.rename(target.path);
+      d.fileRev = oldRev + 1;
+      // Se qualcosa va storto più avanti si torna alla versione di prima
+      // (il file vecchio non è ancora stato tolto).
+      rollback = () {
+        final b = Document.fromJson(before);
+        d
+          ..fileRev = oldRev
+          ..archiveRev = oldArchiveRev
+          ..checksum = b.checksum
+          ..fileSize = b.fileSize
+          ..pageCount = b.pageCount;
+      };
       final bytes = await fileOf(d).readAsBytes();
       d
         ..checksum = Ingestor.checksumOf(bytes)
@@ -1150,12 +1175,17 @@ class AppState extends ChangeNotifier {
         if (settings.makeArchive || d.hasArchive) await ingestor.saveArchive(d, ocr);
       }
       d.content = text;
+      // Tutto riuscito: ora si può togliere il file vecchio.
+      if (await oldFile.exists()) await oldFile.delete();
       try {
         await ingestor.makeThumbnail(fileOf(d).path, d.id);
       } catch (_) {}
       logChanges(archive, before, d, via: 'Pagine');
       d.touch();
       changed();
+    } catch (_) {
+      rollback?.call();
+      rethrow;
     } finally {
       busy = null;
       notifyListeners();
