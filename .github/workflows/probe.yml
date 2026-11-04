@@ -15,13 +15,12 @@ jobs:
           flutter pub add flutter_edge_ai flutter_edge_ai_litertlm flutter_edge_ai_embeddings > /dev/null 2>&1 || flutter pub add flutter_edge_ai flutter_edge_ai_litertlm flutter_edge_ai_embeddings
           E=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "flutter_edge_ai-2*" | sort | tail -1)
           L=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "flutter_edge_ai_litertlm-*" | sort | tail -1)
-          echo "#### catalog"; sed -n 100,140p $L/lib/src/catalog/generated/litert_catalog.g.dart
-          sed -n 2363,2470p $L/lib/src/catalog/generated/litert_catalog.g.dart
-          sed -n 2944,3040p $L/lib/src/catalog/generated/litert_catalog.g.dart
-          echo "#### embedding_model"; sed -n 25,150p $E/lib/src/embedding/embedding_model.dart
-          echo "#### installEmbedder"; grep -rn -A25 "installEmbedder(" $E/lib/flutter_edge_ai.dart $E/lib/src/*.dart | grep -v "^\S*-\s*///" | head -80
-          grep -rln "class EmbedderInstallationBuilder\|EmbedderInstall" $E/lib | head; f=$(grep -rln "class EmbedderInstall" $E/lib | head -1); [ -n "$f" ] && grep -n -E "^\s*(Embedder|Future|[A-Za-z<>]+ )[a-zA-Z]+\(|^\s*[A-Za-z<>?]+ [a-zA-Z]+\(" $f | head -60
-          echo "#### getActiveEmbedder"; grep -rn -A25 "getActiveEmbedder(" $E/lib/src/flutter_edge_ai*.dart $E/lib/flutter_edge_ai.dart 2>/dev/null | grep -v "///" | head -60
-          grep -rn "static.*Embedder\|static.*embedder" $E/lib | head -20
-          echo "#### variant"; sed -n 160,260p $E/lib/src/catalog/model_catalog.dart
-          echo "#### catalog usage readme"; grep -n -i -B3 -A25 "LiteRtEmbedders\|catalog" $L/README.md | head -120
+          F=$E/lib/src/api/flutter_edge_ai.dart
+          grep -n "static " $F | grep -i -E "embed|catalog|initialize" 
+          sed -n 300,335p $F; sed -n 915,970p $F
+          grep -n -i -A30 "installEmbedderFromCatalog\|static .*FromCatalog" $F | grep -v "///" | head -60
+          B=$(grep -rln "class EmbeddingInstallationBuilder" $E/lib); grep -n -E "^  [A-Za-z].*\(|^  [A-Za-z<>?]+ get " $B | head -40
+          grep -n -A20 "static Future<void> initialize" $F | head -30
+          curl -s https://huggingface.co/api/models/litert-community/embeddinggemma-2-text-270m-litert-lm | head -c 600; echo
+          curl -sIL https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/resolve/9be6e8b90982095dc05c2bd162e4b954ee4dbac7/embeddinggemma-2-text-270m.litertlm | grep -iE '^HTTP|content-length'
+          curl -s https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/raw/main/README.md | head -80
