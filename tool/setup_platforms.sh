@@ -98,6 +98,9 @@ grep -c 'intent.action.SEND' "$MANIFEST" || { cat "$MANIFEST"; exit 1; }
 for G in android/app/build.gradle.kts android/app/build.gradle; do
   if [ -f "$G" ]; then
     sed -i -E 's/minSdk( =|) flutter\.minSdkVersion/minSdk\1 30/' "$G"
+    # ID diverso dalla versione precedente: le due app si installano insieme.
+    sed -i -E 's/applicationId( =|) "dev\.paperdrive\.paperdrive"/applicationId\1 "dev.paperdrive.paperlink"/' "$G"
+    grep -q 'dev.paperdrive.paperlink' "$G" || { echo "applicationId non cambiato"; cat "$G"; exit 1; }
     # Niente R8: rinomina classi usate via JNI/riflessione (ML Kit, AI,
     # shared_preferences) e rompe l'app solo nella versione release.
     sed -i -E 's/^( *)signingConfig = signingConfigs\.getByName\("debug"\)/\1signingConfig = signingConfigs.getByName("debug")\n\1isMinifyEnabled = false\n\1isShrinkResources = false/' "$G"

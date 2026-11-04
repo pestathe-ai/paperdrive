@@ -214,7 +214,7 @@ class _SharingScreenState extends State<SharingScreen> {
                 : 'Il tuo archivio personale'),
             subtitle: Text(s.driveShared
                 ? (s.driveCanEdit ? 'Puoi aggiungere e modificare' : 'Sola lettura')
-                : 'Cartella "Paperdrive" nel tuo Drive · tu: ${s.driveAccount ?? ''}'),
+                : 'Cartella "PaperLink Lab" nel tuo Drive · tu: ${s.driveAccount ?? ''}'),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -300,7 +300,7 @@ class _SharingScreenState extends State<SharingScreen> {
           Padding(
             padding: const EdgeInsets.all(16),
             child: Text(
-              'Come funziona: l\'archivio è la cartella "Paperdrive" su Google Drive. '
+              'Come funziona: l\'archivio è la cartella "PaperLink Lab" su Google Drive. '
               'Chi inviti riceve un\'email da Google; poi, nella sua app D. PaperLink Lab, apre '
               '"Utenti e condivisione" e sceglie "Usa un archivio condiviso con me". '
               'Ogni documento ricorda chi l\'ha aggiunto e chi l\'ha modificato per ultimo. '

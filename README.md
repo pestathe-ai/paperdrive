@@ -41,7 +41,7 @@ casa restano comuni.
 ### Cartella di importazione su Drive (v0.9)
 
 Copia i documenti (anche intere cartelle, per esempio da
-Dropbox) in `Paperdrive/Da importare` su Google Drive e premi *Menu → Importa da Drive* (oppure
+Dropbox) in `PaperLink Lab/Da importare` su Google Drive e premi *Menu → Importa da Drive* (oppure
 attiva l'importazione automatica all'apertura). Ogni file viene letto, classificato e archiviato,
 poi spostato nel cestino di Drive. L'ordine fatto a mano viene rispettato: la prima cartella
 diventa la categoria, le sottocartelle i tag, una cartella con l'anno dà l'anno, un nome di file
@@ -75,7 +75,7 @@ Ogni documento che **scansioni**, **importi**, ricevi per **email** o **condivid
 2. **diviso** se nella scansione c'è un foglio separatore con codice a barre (PATCH T) e numerato con l'**ASN** letto dall'etichetta;
 3. **classificato**: categoria (14 categorie predefinite già pronte: Bolletta, Fattura, Scontrino, Banca, Busta paga, Tasse, Sanità, Assicurazione, Contratto, Auto, Casa, Scuola, Lavoro, Garanzia), corrispondente, tag, percorso; vince la regola più pertinente;
 4. **rinominato** con un modello, es. `Bolletta Enel 03-2024`;
-5. **archiviato su Google Drive** in cartelle per categoria e anno, es. `Paperdrive/Bolletta/2024/2024-03-05 Bolletta Enel 03-2024.pdf` (modello modificabile, più *percorsi* personalizzati). Se cambi categoria o titolo, il file su Drive viene spostato e rinominato.
+5. **archiviato su Google Drive** in cartelle per categoria e anno, es. `PaperLink Lab/Domenico/Bolletta/2024/Bolletta Enel 05-03-2024.pdf` (modello modificabile, più *percorsi* personalizzati). Se cambi categoria o titolo, il file su Drive viene spostato e rinominato.
 
 Tutto si regola da *Menu → Archiviazione automatica*, con anteprima del risultato.
 
@@ -103,7 +103,7 @@ Google richiede che ogni app che usa Drive sia registrata. Dal browser:
 2. **API e servizi → Libreria**: cerca **Google Drive API** e premi **Abilita**.
 3. **API e servizi → Schermata consenso OAuth** (o "Google Auth Platform"): tipo **Esterno**, nome app "Paperdrive", la tua email. In **Pubblico / Utenti di test** aggiungi il tuo indirizzo Gmail.
 4. **Credenziali → Crea credenziali → ID client OAuth → Android**:
-   - Nome pacchetto: `dev.paperdrive.paperdrive`
+   - Nome pacchetto: `dev.paperdrive.paperlink`
    - Impronta SHA-1: `28:64:55:35:6C:77:EA:5D:30:D8:50:F4:CD:62:3D:38:89:CC:81:FD`
 5. Nell'app: **Impostazioni → Collega Google Drive**. Google mostrerà "app non verificata": tocca *Avanzate* → *Vai a Paperdrive*.
 

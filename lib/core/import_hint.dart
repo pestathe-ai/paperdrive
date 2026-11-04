@@ -11,7 +11,7 @@ import 'formats.dart';
 import 'models.dart';
 import 'text_utils.dart';
 
-/// Nome della cartella su Drive (dentro "Paperdrive").
+/// Nome della cartella su Drive (dentro la cartella dell'archivio).
 const String inboxFolderName = 'Da importare';
 
 /// Formati che si possono importare.

@@ -131,7 +131,7 @@ class DriveSync {
 
   /// Accesso completo a Drive: serve per gli archivi condivisi da altri.
   static const List<String> scopes = [drive.DriveApi.driveScope];
-  static const String folderName = 'Paperdrive';
+  static const String folderName = 'PaperLink Lab';
   static const String indexName = 'paperdrive-index.json';
   static const String folderMime = 'application/vnd.google-apps.folder';
   static final RegExp _internalName = RegExp(r'^[A-Za-z0-9-]+(\.archive\d+)?\.pdf$');
@@ -208,7 +208,7 @@ class DriveSync {
 
   static String _q(String s) => s.replaceAll(r'\', r'\\').replaceAll("'", r"\'");
 
-  /// La mia cartella "Paperdrive" (creata se manca).
+  /// La mia cartella dell'archivio (creata se manca).
   Future<String> _ownFolder(drive.DriveApi api) async {
     final res = await api.files.list(
       q: "name = '${_q(folderName)}' and mimeType = '$folderMime' "

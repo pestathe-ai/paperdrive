@@ -8,7 +8,7 @@ import '../state/app_state.dart';
 import 'widgets.dart';
 
 /// Dati da inserire su Google Cloud per collegare Drive.
-const String androidPackage = 'dev.paperdrive.paperdrive';
+const String androidPackage = 'dev.paperdrive.paperlink';
 const String signingSha1 = '28:64:55:35:6C:77:EA:5D:30:D8:50:F4:CD:62:3D:38:89:CC:81:FD';
 
 class SettingsScreen extends StatefulWidget {
@@ -277,7 +277,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                'I documenti e l\'indice vengono salvati in una cartella "Paperdrive" '
+                'I documenti e l\'indice vengono salvati in una cartella "PaperLink Lab" '
                 'del tuo Drive, che puoi condividere con altre persone. Google mostrerà '
                 'l\'avviso "app non verificata": è normale per un\'app personale, tocca '
                 '"Avanzate" e poi "Vai a Paperdrive".',
