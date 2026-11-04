@@ -88,6 +88,39 @@ void main() {
     expect(answerText(a, q, runAsk(a, q, SearchIndex())), contains('120,00 €'));
   });
 
+  test('spese di più categorie insieme, con le medicine prese anche dagli scontrini della farmacia', () {
+    final a = archive();
+    a.documents['s1'] = Document(id: 's1', title: 'Scontrino farmacia', typeId: 'st-scontrino', created: DateTime(2026, 2, 1),
+        content: 'FARMACIA CENTRALE farmaci TOTALE EURO 15,50');
+    a.documents['s2'] = Document(id: 's2', title: 'Scontrino bar', typeId: 'st-scontrino', created: DateTime(2026, 2, 2),
+        content: 'BAR SPORT caffè TOTALE EURO 2,00');
+    a.documents['f1'] = Document(id: 'f1', title: 'Fattura idraulico', typeId: 'st-fattura', created: DateTime(2026, 4, 2),
+        content: 'Fattura riparazione Totale 100,00 euro');
+
+    var q = parseQuestion(a, 'Quanto ho speso in medicine?', now: now);
+    expect(q.intent, AskIntent.total);
+    expect(q.typeIds, {healthTypeId});
+    expect(q.words, isEmpty);
+    var hits = runAsk(a, q, SearchIndex());
+    // 3 documenti sanitari + lo scontrino della farmacia, non quello del bar.
+    expect(hits.map((h) => h.$1.title), containsAll(['Scontrino farmacia', 'Fattura dentista']));
+    expect(hits.map((h) => h.$1.title), isNot(contains('Scontrino bar')));
+
+    q = parseQuestion(a, 'quanto ho speso in fatture e scontrini o in sanità', now: now);
+    expect(q.typeIds, containsAll(['st-fattura', 'st-scontrino', healthTypeId]));
+    hits = runAsk(a, q, SearchIndex());
+    final text = answerText(a, q, hits);
+    expect(text, contains('317,50 €'));
+    expect(text, contains('Fattura: 100,00 €'));
+  });
+
+  test('"documenti" non vuol dire la categoria Documenti personali', () {
+    final a = archive();
+    final q = parseQuestion(a, 'trovami i documenti di Maria', now: now);
+    expect(q.typeIds, isEmpty);
+    expect(q.person, 'Maria');
+  });
+
   test('domande quando non è sicura', () {
     final a = archive();
     final inbox = a.inboxTags.first.id;

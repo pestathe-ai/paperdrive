@@ -25,7 +25,7 @@ class AskQuery {
   AskQuery({
     this.intent = AskIntent.find,
     List<String>? words,
-    this.typeId,
+    String? typeId,
     this.correspondentId,
     this.person,
     this.specialty,
@@ -33,11 +33,25 @@ class AskQuery {
     this.year,
     this.from,
     this.to,
-  }) : words = words ?? <String>[];
+    Set<String>? typeIds,
+    List<String>? typeWords,
+  })  : words = words ?? <String>[],
+        typeIds = typeIds ?? {?typeId},
+        typeWords = typeWords ?? <String>[];
 
   AskIntent intent;
   List<String> words;
-  String? typeId;
+
+  /// Categorie cercate (basta una: "fatture e scontrini").
+  Set<String> typeIds;
+
+  /// Parole che fanno rientrare un documento anche se è in un'altra
+  /// categoria (lo scontrino della farmacia quando si chiede di medicine).
+  List<String> typeWords;
+
+  /// La prima categoria cercata.
+  String? get typeId => typeIds.isEmpty ? null : typeIds.first;
+  set typeId(String? id) => typeIds = {?id};
   String? correspondentId;
   String? person;
   String? specialty;
@@ -49,7 +63,7 @@ class AskQuery {
   /// Cosa ha capito, in breve (mostrato sopra i risultati).
   String describe(Archive a) {
     final parts = <String>[
-      if (typeId != null) a.type(typeId)?.name ?? '',
+      if (typeIds.isNotEmpty) typeIds.map((t) => a.type(t)?.name ?? '').where((e) => e.isNotEmpty).join(' o '),
       if (healthKind != null) healthKind!,
       if (specialty != null) specialty!,
       if (person != null) 'di $person',
@@ -92,6 +106,27 @@ const Map<String, String> _healthWords = {
   'prescrizioni': 'Prescrizioni', 'impegnativa': 'Prescrizioni', 'impegnative': 'Prescrizioni',
 };
 
+/// Modi comuni di indicare una categoria senza il suo nome esatto, e
+/// parole che, nel testo, fanno rientrare documenti finiti in altre
+/// categorie (es. lo scontrino della farmacia per "medicine").
+const List<(List<String>, String, List<String>)> _concepts = [
+  (
+    [
+      'sanita', 'sanitario', 'sanitaria', 'sanitari', 'sanitarie', 'medico', 'medica', 'medici', 'mediche',
+      'medicina', 'medicine', 'medicinale', 'medicinali', 'farmaco', 'farmaci', 'farmacia', 'farmacie',
+      'visita', 'visite', 'dottore', 'dottori', 'ticket', 'salute', 'ospedale', 'cure',
+    ],
+    healthTypeId,
+    ['farmacia', 'parafarmacia', 'farmaco', 'farmaci', 'medicinale', 'medicinali', 'ticket'],
+  ),
+  (['scontrino', 'scontrini', 'ricevuta', 'ricevute'], 'st-scontrino', []),
+  (['fattura', 'fatture'], 'st-fattura', []),
+  (['bolletta', 'bollette', 'utenze', 'utenza'], 'st-bolletta', []),
+  (['tasse', 'tassa', 'imposte', 'imposta', 'tributi'], 'st-tasse', []),
+  (['stipendio', 'stipendi', 'cedolino', 'cedolini'], 'st-paga', []),
+  (['assicurazione', 'assicurazioni', 'polizza', 'polizze'], 'st-assicurazione', []),
+];
+
 bool _wordIn(String flat, String w) => RegExp('(?<![a-z0-9])${RegExp.escape(w)}(?![a-z0-9])').hasMatch(flat);
 
 /// Capisce la domanda con le regole (senza AI).
@@ -101,7 +136,7 @@ AskQuery parseQuestion(Archive a, String question, {DateTime? now}) {
   final flat = ' ${normalize(question).replaceAll(RegExp(r"[^a-z0-9àèéìòù]+"), ' ').trim()} ';
   final used = <String>{};
 
-  if (RegExp(r'quanto (ho|abbiamo|hai) (speso|pagato)|totale|quanto (costa|e costato|sono costat)|spes[ae] (di|del|per|in)').hasMatch(flat)) {
+  if (RegExp(r'quanto (?:(?:ho|abbiamo|hai) )?(speso|pagato|spendo|spendiamo|pago|paghiamo)|totale|quanto (costa|e costato|sono costat)|spes[ae] (di|del|per|in|mediche|sanitarie)').hasMatch(flat)) {
     q.intent = AskIntent.total;
   } else if (RegExp(r'\bquant[ie]\b').hasMatch(flat)) {
     q.intent = AskIntent.count;
@@ -148,13 +183,13 @@ AskQuery parseQuestion(Archive a, String question, {DateTime? now}) {
     if (_wordIn(flat, e.key)) {
       q.healthKind = e.value;
       used.add(e.key);
-      if (a.type(healthTypeId) != null) q.typeId = healthTypeId;
+      if (a.type(healthTypeId) != null) q.typeIds.add(healthTypeId);
     }
   }
   final spec = detectSpecialty(flat);
   if (spec != null) {
     q.specialty = spec;
-    if (a.type(healthTypeId) != null) q.typeId = healthTypeId;
+    if (a.type(healthTypeId) != null) q.typeIds.add(healthTypeId);
     for (final (name, words) in specialties) {
       if (name != spec) continue;
       for (final w in words) {
@@ -165,17 +200,35 @@ AskQuery parseQuestion(Archive a, String question, {DateTime? now}) {
     }
   }
 
-  // Categoria (per nome, anche solo la prima parola: "bolletta", "busta paga").
-  if (q.typeId == null) {
+  // Categorie indicate con parole comuni ("medicine", "scontrini"…).
+  for (final (cues, typeId, textWords) in _concepts) {
+    final found = cues.where((c) => _wordIn(flat, c)).toList();
+    if (found.isEmpty || a.type(typeId) == null) continue;
+    q.typeIds.add(typeId);
+    used.addAll(found);
+    for (final w in textWords) {
+      if (!q.typeWords.contains(w)) q.typeWords.add(w);
+    }
+  }
+
+  // Categorie per nome, anche solo la prima parola ("bolletta", "busta
+  // paga"). Tutte quelle nominate, e anche quelle con lo stesso nome.
+  for (final t in a.activeTypes) {
+    final tn = normalize(t.name);
+    final first = tn.split(' ').first;
+    final byFirst = first.length >= 4 &&
+        !_stop.contains(first) &&
+        RegExp('(?<![a-z0-9])${RegExp.escape(first.substring(0, first.length - 1))}[a-z]?(?![a-z0-9])').hasMatch(flat);
+    if (_wordIn(flat, tn) || byFirst) {
+      q.typeIds.add(t.id);
+      used.addAll(tn.split(' '));
+      used.add(first.substring(0, first.length - 1));
+    }
+  }
+  if (q.typeIds.isNotEmpty) {
+    final names = {for (final id in q.typeIds) normalize(a.type(id)?.name ?? '')};
     for (final t in a.activeTypes) {
-      final tn = normalize(t.name);
-      final first = tn.split(' ').first;
-      if (_wordIn(flat, tn) || (first.length >= 4 && RegExp('(?<![a-z0-9])${RegExp.escape(first.substring(0, first.length - 1))}[a-z]?(?![a-z0-9])').hasMatch(flat))) {
-        q.typeId = t.id;
-        used.addAll(tn.split(' '));
-        used.add(first.substring(0, first.length - 1));
-        break;
-      }
+      if (names.contains(normalize(t.name))) q.typeIds.add(t.id);
     }
   }
 
@@ -253,7 +306,10 @@ AskQuery mergeAskResponse(Archive a, AskQuery base, String raw) {
       if (base.intent == AskIntent.find) base.intent = AskIntent.count;
   }
   final cat = s('categoria');
-  if (base.typeId == null && cat != null) base.typeId = findByName(a.activeTypes, cat)?.id;
+  if (base.typeIds.isEmpty && cat != null) {
+    final t = findByName(a.activeTypes, cat);
+    if (t != null) base.typeIds.add(t.id);
+  }
   final sender = s('mittente');
   if (base.correspondentId == null && sender != null) {
     base.correspondentId = findByName(a.activeCorrespondents, sender)?.id;
@@ -285,8 +341,12 @@ AskQuery mergeAskResponse(Archive a, AskQuery base, String raw) {
 /// Un documento trovato, con il punteggio.
 typedef AskHit = (Document, double);
 
-bool _passes(Archive a, Document d, AskQuery q) {
-  if (q.typeId != null && d.typeId != q.typeId) return false;
+bool _passes(Archive a, Document d, AskQuery q, SearchIndex index) {
+  if (q.typeIds.isNotEmpty && !q.typeIds.contains(d.typeId)) {
+    if (q.typeWords.isEmpty) return false;
+    final (_, words) = index.entry(a, d);
+    if (!q.typeWords.any((w) => words.any((x) => x.startsWith(w)))) return false;
+  }
   if (q.correspondentId != null && d.correspondentId != q.correspondentId) return false;
   if (q.person != null && normalize(d.customFields[personFieldId] ?? '') != normalize(q.person!)) return false;
   if (q.specialty != null && normalize(d.customFields[specialtyFieldId] ?? '') != normalize(q.specialty!)) return false;
@@ -303,7 +363,7 @@ List<AskHit> runAsk(Archive a, AskQuery q, SearchIndex index) {
   List<AskHit> search(AskQuery q) {
     final out = <AskHit>[];
     for (final d in a.activeDocuments) {
-      if (!_passes(a, d, q)) continue;
+      if (!_passes(a, d, q, index)) continue;
       var score = 1.0;
       if (q.words.isNotEmpty) {
         final (_, words) = index.entry(a, d);
@@ -329,13 +389,24 @@ List<AskHit> runAsk(Archive a, AskQuery q, SearchIndex index) {
   }
 
   var hits = search(q);
-  // Allarga: prima le parole, poi i campi che potrebbero mancare.
+  // Allarga: prima le parole, poi i campi che potrebbero mancare, infine
+  // la categoria (cercando il suo nome nel testo).
   if (hits.isEmpty && q.words.isNotEmpty) hits = search(AskQuery(
-        typeId: q.typeId, correspondentId: q.correspondentId, person: q.person,
+        typeIds: q.typeIds, typeWords: q.typeWords, correspondentId: q.correspondentId, person: q.person,
         specialty: q.specialty, healthKind: q.healthKind, year: q.year, from: q.from, to: q.to));
   if (hits.isEmpty && (q.specialty != null || q.healthKind != null)) {
     hits = search(AskQuery(words: [...q.words, if (q.specialty != null) ...tokenize(q.specialty!)],
-        typeId: q.typeId, correspondentId: q.correspondentId, person: q.person, year: q.year, from: q.from, to: q.to));
+        typeIds: q.typeIds, typeWords: q.typeWords, correspondentId: q.correspondentId, person: q.person,
+        year: q.year, from: q.from, to: q.to));
+  }
+  if (hits.isEmpty && q.typeIds.isNotEmpty) {
+    final names = <String>{
+      for (final id in q.typeIds) ...tokenize(a.type(id)?.name ?? '').where((w) => w.length >= 4 && !_stop.contains(w)),
+      ...q.typeWords,
+      ...q.words,
+    };
+    hits = search(AskQuery(words: names.toList(), correspondentId: q.correspondentId, person: q.person,
+        year: q.year, from: q.from, to: q.to));
   }
   if (q.intent == AskIntent.latest) {
     hits.sort((x, y) => y.$1.created.compareTo(x.$1.created));
@@ -380,8 +451,19 @@ String answerText(Archive a, AskQuery q, List<AskHit> hits) {
       }
       if (withAmount == 0) return 'Ho trovato ${hits.length} documenti, ma in nessuno ho letto un importo.';
       final missing = hits.length - withAmount;
+      // Con più categorie, il totale di ciascuna.
+      final byType = <String, double>{};
+      for (final (d, _) in hits) {
+        final v = amountOf(d);
+        if (v == null) continue;
+        final name = a.type(d.typeId)?.name ?? 'Senza categoria';
+        byType[name] = (byType[name] ?? 0) + v;
+      }
+      final detail = byType.length < 2
+          ? ''
+          : '\n${(byType.entries.toList()..sort((x, y) => y.value.compareTo(x.value))).map((e) => '${e.key}: ${euro(e.value)}').join(' · ')}';
       return 'Totale: ${euro(sum)} in $withAmount documenti'
-          '${missing > 0 ? ' ($missing senza importo leggibile)' : ''}.';
+          '${missing > 0 ? ' ($missing senza importo leggibile)' : ''}.$detail';
     case AskIntent.find:
       return hits.length == 1 ? 'Ho trovato 1 documento.' : 'Ho trovato ${hits.length} documenti.';
   }
