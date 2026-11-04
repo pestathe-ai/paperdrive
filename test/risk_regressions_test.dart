@@ -154,6 +154,8 @@ void main() {
       final a = casa();
       final d = Document(title: 'x', content: 'fattura lavori saracinesca box autorimessa impermeabilizzazione preventivo', typeId: 'st-casa');
       a.documents[d.id] = d;
+      // ignore: avoid_print
+      print('DEBUGRANK ${rankSubfolders(a, d).map((e) => '${e.$1.name}=${e.$2.toStringAsFixed(3)}').join(' | ')}');
       expect(applySubfolder(a, d), SubfolderDecision.assigned);
       expect(a.storagePath(d.storagePathId)!.name, contains('Box'));
     });
