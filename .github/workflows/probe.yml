@@ -13,14 +13,15 @@ jobs:
         run: |
           mkdir p && cd p && flutter create --platforms android x && cd x
           flutter pub add flutter_edge_ai flutter_edge_ai_litertlm flutter_edge_ai_embeddings > /dev/null 2>&1 || flutter pub add flutter_edge_ai flutter_edge_ai_litertlm flutter_edge_ai_embeddings
-          grep -A3 "flutter_edge_ai" pubspec.lock | grep -E "name|version" 
-          for pkg in flutter_edge_ai_embeddings flutter_edge_ai flutter_edge_ai_litertlm; do
-            d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "$pkg-*" | sort | tail -1); echo "##### $d"
-            grep -rn -E "installEmbedder|class .*Embed|getActiveEmbedder|Future<.*> embed|enum TaskType|TaskType\.|modelFromNetwork|tokenizerFromNetwork|EmbeddingInput\.|hasActiveEmbedder|uninstallEmbedder|withProgress|embedBatch|class Embedding|List<double>" $d/lib | grep -v "^\s*//" | head -120
-          done
-          d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "flutter_edge_ai_embeddings-*" | sort | tail -1)
-          sed -n 1,200p $d/README.md
-          for pkg in flutter_edge_ai flutter_edge_ai_litertlm; do d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "$pkg-*" | sort | tail -1); grep -n -i -B2 -A30 "embedd" $d/README.md | head -150; done
-          d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "flutter_edge_ai-*" | sort | tail -1); f=$(grep -rl "installEmbedder" $d/lib | head -3); for x in $f; do echo "#### $x"; grep -n -A12 -E "installEmbedder|class EmbedderInstall|getActiveEmbedder|embed\(" $x | head -120; done
-          grep -rn -A15 "enum TaskType" ~/.pub-cache/hosted/pub.dev/flutter_edge_ai*/lib | head -40
-          grep -rn -B3 -A25 "abstract class EmbeddingModel\|class EmbeddingModel\|abstract class Embedder\b\|abstract interface class Embed" ~/.pub-cache/hosted/pub.dev/flutter_edge_ai*/lib | head -80
+          E=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "flutter_edge_ai-2*" | sort | tail -1)
+          L=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "flutter_edge_ai_litertlm-*" | sort | tail -1)
+          echo "#### catalog"; sed -n 100,140p $L/lib/src/catalog/generated/litert_catalog.g.dart
+          sed -n 2363,2470p $L/lib/src/catalog/generated/litert_catalog.g.dart
+          sed -n 2944,3040p $L/lib/src/catalog/generated/litert_catalog.g.dart
+          echo "#### embedding_model"; sed -n 25,150p $E/lib/src/embedding/embedding_model.dart
+          echo "#### installEmbedder"; grep -rn -A25 "installEmbedder(" $E/lib/flutter_edge_ai.dart $E/lib/src/*.dart | grep -v "^\S*-\s*///" | head -80
+          grep -rln "class EmbedderInstallationBuilder\|EmbedderInstall" $E/lib | head; f=$(grep -rln "class EmbedderInstall" $E/lib | head -1); [ -n "$f" ] && grep -n -E "^\s*(Embedder|Future|[A-Za-z<>]+ )[a-zA-Z]+\(|^\s*[A-Za-z<>?]+ [a-zA-Z]+\(" $f | head -60
+          echo "#### getActiveEmbedder"; grep -rn -A25 "getActiveEmbedder(" $E/lib/src/flutter_edge_ai*.dart $E/lib/flutter_edge_ai.dart 2>/dev/null | grep -v "///" | head -60
+          grep -rn "static.*Embedder\|static.*embedder" $E/lib | head -20
+          echo "#### variant"; sed -n 160,260p $E/lib/src/catalog/model_catalog.dart
+          echo "#### catalog usage readme"; grep -n -i -B3 -A25 "LiteRtEmbedders\|catalog" $L/README.md | head -120
