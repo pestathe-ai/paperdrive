@@ -246,8 +246,10 @@ class DriveSync {
 
   static String? _logicalName(Map<String, String?>? props) {
     final doc = props?['pdDoc'];
-    if (doc == null || doc.isEmpty) return null;
+    // Solo id validi: un id come "../x" scriverebbe fuori dalla cartella.
+    if (doc == null || !safeDocId(doc)) return null;
     final rev = props?['pdRev'] ?? '0';
+    if (!RegExp(r'^\d{1,6}$').hasMatch(rev)) return null;
     if (props?['pdKind'] == 'arch') return '$doc.archive$rev.pdf';
     return rev == '0' ? '$doc.pdf' : '$doc.v$rev.pdf';
   }

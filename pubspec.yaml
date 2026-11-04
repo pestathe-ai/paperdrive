@@ -30,6 +30,7 @@ dependencies:
   wakelock_plus: ^1.2.8
   # AI sul telefono (LiteRT-LM di Google, gira sulla GPU, niente cloud).
   flutter_edge_ai: ^2.5.5
+  flutter_secure_storage: ^9.2.4
   flutter_edge_ai_litertlm: ^1.19.1
   # Ultima versione su GitHub: quella su pub.dev non è compatibile con il pacchetto pdf (xml 7).
   enough_mail:

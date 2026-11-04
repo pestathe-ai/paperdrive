@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -156,8 +157,9 @@ class Storage {
     return n;
   }
 
-  File docFile(String fileName) => File(p.join(docsDir, fileName));
-  File thumbFile(String docId) => File(p.join(thumbsDir, '$docId.png'));
+  /// Solo il nome del file: niente percorsi che escono dalla cartella.
+  File docFile(String fileName) => File(p.join(docsDir, p.basename(fileName)));
+  File thumbFile(String docId) => File(p.join(thumbsDir, '${p.basename(docId)}.png'));
 
   String tmpPath(String name) => p.join(tmpDir, name);
 
@@ -198,18 +200,52 @@ class Storage {
   Future<void> saveSettings(Settings s) =>
       _writeAtomic(_settingsFile, jsonEncode(s.toJson()));
 
+  /// Le password delle caselle stanno nel portachiavi protetto di Android,
+  /// non nel file.
+  static const FlutterSecureStorage _secrets = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+  static String _passKey(String accountId) => 'mail-pass-$accountId';
+
   Future<MailConfig> loadMail() async {
     try {
       if (await _mailFile.exists()) {
         final j = jsonDecode(await _mailFile.readAsString());
-        return MailConfig.fromJson((j as Map).cast<String, dynamic>());
+        final c = MailConfig.fromJson((j as Map).cast<String, dynamic>());
+        var legacy = false;
+        for (final a in c.accounts) {
+          if (a.password.isNotEmpty) {
+            // Versione precedente: password nel file, si sposta ora.
+            legacy = true;
+            continue;
+          }
+          try {
+            a.password = await _secrets.read(key: _passKey(a.id)) ?? '';
+          } catch (_) {}
+        }
+        if (legacy) await saveMail(c);
+        return c;
       }
     } catch (_) {}
     return MailConfig();
   }
 
-  Future<void> saveMail(MailConfig c) =>
-      _writeAtomic(_mailFile, jsonEncode(c.toJson()));
+  Future<void> saveMail(MailConfig c) async {
+    final j = c.toJson();
+    final safe = <String>{};
+    for (final a in c.accounts) {
+      try {
+        await _secrets.write(key: _passKey(a.id), value: a.password);
+        safe.add(a.id);
+      } catch (_) {
+        // Portachiavi non disponibile: la password resta nel file.
+      }
+    }
+    for (final a in (j['accounts'] as List)) {
+      if (safe.contains((a as Map)['id'])) a['pass'] = '';
+    }
+    await _writeAtomic(_mailFile, jsonEncode(j));
+  }
 
   /// Nomi dei PDF presenti sul telefono.
   Future<Set<String>> localFileNames() async {

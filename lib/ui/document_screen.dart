@@ -83,6 +83,17 @@ class _DocumentScreenState extends State<DocumentScreen> {
       case 'share_arch':
         await share(app, d, archived: true);
       case 'link':
+        final type = app.archive.type(d.typeId)?.name;
+        final ok = await confirm(
+          context,
+          title: 'Creare un link pubblico?',
+          message: 'Chiunque abbia il link potrà aprire "${d.title}"'
+              '${type == null ? '' : ' ($type)'}, senza accedere. '
+              'Per documenti sanitari o d\'identità è meglio condividere il file con "Condividi".',
+          ok: 'Crea link',
+          danger: true,
+        );
+        if (!ok || !mounted) return;
         try {
           showMessage(context, 'Creazione del link…');
           final url = await app.createPublicLink(d, archived: d.hasArchive);

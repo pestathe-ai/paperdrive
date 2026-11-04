@@ -1253,6 +1253,11 @@ class AppState extends ChangeNotifier {
   Future<List<String>> importShared(List<(String, String)> files) async {
     if (files.isEmpty) return const [];
     if (readOnly) {
+      for (final (path, _) in files) {
+        try {
+          await File(path).delete();
+        } catch (_) {}
+      }
       final msg = ['Archivio in sola lettura: file non importati'];
       shareResults.value = msg;
       return msg;

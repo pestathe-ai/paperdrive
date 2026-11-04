@@ -11,6 +11,13 @@ import 'people.dart' show Person, defaultSharedTypeIds;
 final Random _rnd = Random.secure();
 
 /// Identificativo casuale di 16 caratteri esadecimali.
+/// Id letto da un indice (anche condiviso da altri): i caratteri che non
+/// possono stare in un nome di file vengono sostituiti.
+String _safeId(String id) => safeDocId(id) ? id : id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_').padRight(1, '_');
+
+/// Un id usabile come nome di file (niente "/" o "..").
+bool safeDocId(String id) => RegExp(r'^[A-Za-z0-9_-]{1,64}$').hasMatch(id);
+
 String newId() {
   final b = StringBuffer();
   for (var i = 0; i < 16; i++) {
@@ -460,7 +467,7 @@ class Document with Syncable {
       };
 
   factory Document.fromJson(Map<String, dynamic> j) => Document(
-        id: j['id'] as String,
+        id: _safeId(j['id'] as String),
         title: j['title'] as String? ?? '',
         created: _parseDate(j['created'] as String?),
         added: (j['added'] as num?)?.toInt(),

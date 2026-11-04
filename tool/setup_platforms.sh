@@ -10,6 +10,11 @@ MANIFEST=android/app/src/main/AndroidManifest.xml
 grep -q 'android.permission.INTERNET' "$MANIFEST" || \
   sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$MANIFEST"
 sed -i 's#android:label="paperdrive"#android:label="D. PaperLink Lab"#' "$MANIFEST"
+# Niente backup automatico di Android: l'indice contiene il testo dei
+# documenti (anche sanitari) e le password delle caselle email.
+grep -q 'android:allowBackup' "$MANIFEST" || \
+  sed -i 's#<application#<application android:allowBackup="false" android:fullBackupContent="false"#' "$MANIFEST"
+grep -q 'android:allowBackup="false"' "$MANIFEST" || { echo "allowBackup non impostato"; exit 1; }
 
 # Icona Dom Studio (adattiva, con versione a tema per Android 13+).
 cp -r tool/android/res/. android/app/src/main/res/
