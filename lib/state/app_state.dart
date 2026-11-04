@@ -575,7 +575,13 @@ class AppState extends ChangeNotifier {
     if (ai?.title != null && aiMayRetitle(archive, doc)) doc.title = ai!.title!;
     if (folders != null) applyFolderHint(archive, doc, folders);
     applyPeople(archive, doc, aiPerson: ai?.person, aiSpecialty: ai?.specialty, aiHealthKind: ai?.healthKind);
-    if (folders == null) applySubfolder(archive, doc, ask: !settings.neverAsk, aiHint: ai?.subfolder);
+    if (folders == null) {
+      applySubfolder(archive, doc,
+          ask: !settings.neverAsk,
+          aiHint: ai?.subfolder,
+          meaning: meaning,
+          meaningOf: settings.meaningEnabled ? meanings.of : null);
+    }
     dropUnfitPath(archive, doc);
     if (asn != null) {
       doc.asn = asn;
@@ -1065,7 +1071,9 @@ class AppState extends ChangeNotifier {
         }
       case QuestionKind.folder:
         if (value.isNotEmpty) d.storagePathId = value;
-        d.suggestedPathId = null;
+        d
+          ..suggestedPathId = null
+          ..suggestedPaths = null;
       case QuestionKind.category:
         d.typeId = value;
         applyPeople(archive, d);

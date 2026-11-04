@@ -128,30 +128,58 @@ void main() {
     expect(safeDocId(d.id), isTrue);
   });
 
-  group('sottocartella principale di una categoria', () {
-    Archive casa(int moved) {
+  group('sottocartelle di palazzi diversi', () {
+    Archive casa() {
       final a = Archive.starter();
       ensurePeopleEntities(a);
-      for (var i = 0; i < moved; i++) {
-        a.documents['m$i'] = Document(id: 'm$i', title: 'Spese $i', typeId: 'st-casa', created: DateTime(2026, 1, i + 1))
-          ..pinnedFolder = ['Casa', 'Via alessandrina', i.isEven ? 'Box' : '2026']
-          ..userEdited = true;
+      final box = StoragePath(
+          name: 'Via alessandrina / Lavori condominiali / Box',
+          template: 'Casa/Via alessandrina/{created_year}/Lavori condominiali/Box/{title} {data}',
+          learned: true);
+      final roma = StoragePath(name: 'Via Roma', template: 'Casa/Via Roma/{created_year}/{title} {data}', learned: true);
+      a.storagePaths[box.id] = box;
+      a.storagePaths[roma.id] = roma;
+      void add(String id, String text, StoragePath p) {
+        a.documents[id] = Document(id: id, title: id, content: text, typeId: 'st-casa', storagePathId: p.id, userEdited: true);
       }
+
+      add('b1', 'preventivo sostituzione saracinesca box autorimessa condominio alessandrina', box);
+      add('b2', 'lavori box autorimessa impermeabilizzazione saracinesca ripartizione spese', box);
+      add('r1', 'condominio via roma riscaldamento centralizzato caldaia conguaglio', roma);
+      add('r2', 'via roma riscaldamento caldaia manutenzione assemblea condominio', roma);
       return a;
     }
 
-    test('se tieni la Casa in "Via alessandrina", anche i documenti nuovi vanno lì', () {
-      final a = casa(3);
-      final d = Document(title: 'Verbale assemblea', typeId: 'st-casa', created: DateTime(2026, 11, 4));
+    test('un documento sui lavori del box va nella cartella del box', () {
+      final a = casa();
+      final d = Document(title: 'x', content: 'fattura lavori saracinesca box autorimessa', typeId: 'st-casa');
       a.documents[d.id] = d;
-      expect(drivePath(a, d).$1, ['Casa', 'Via alessandrina', '2026']);
+      expect(applySubfolder(a, d), SubfolderDecision.assigned);
+      expect(a.storagePath(d.storagePathId)!.name, contains('Box'));
     });
 
-    test('con un solo documento spostato non si decide ancora', () {
-      final a = casa(1);
-      final d = Document(title: 'Verbale assemblea', typeId: 'st-casa', created: DateTime(2026, 11, 4));
+    test('un documento dell\'altro palazzo va nell\'altra cartella', () {
+      final a = casa();
+      final d = Document(title: 'x', content: 'riscaldamento caldaia via roma conguaglio', typeId: 'st-casa');
       a.documents[d.id] = d;
-      expect(drivePath(a, d).$1, ['Casa', '2026']);
+      expect(applySubfolder(a, d), SubfolderDecision.assigned);
+      expect(a.storagePath(d.storagePathId)!.name, 'Via Roma');
+    });
+
+    test('se non è chiaro chiede, proponendo le cartelle possibili', () {
+      final a = casa();
+      final d = Document(title: 'x', content: 'convocazione assemblea condominio ordine del giorno', typeId: 'st-casa');
+      a.documents[d.id] = d;
+      final r = applySubfolder(a, d);
+      expect(r, isNot(SubfolderDecision.assigned));
+    });
+
+    test('l\'AI che indica la cartella aiuta a decidere', () {
+      final a = casa();
+      final d = Document(title: 'x', content: 'convocazione assemblea condominio ordine del giorno', typeId: 'st-casa');
+      a.documents[d.id] = d;
+      final ranked = rankSubfolders(a, d, aiHint: 'Casa: Via alessandrina / Lavori condominiali / Box');
+      expect(ranked.first.$1.name, contains('Box'));
     });
   });
 }

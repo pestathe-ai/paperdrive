@@ -7,8 +7,11 @@
 ///   Roma" che diventa un percorso: i documenti simili ci finiranno da soli.
 library;
 
+import 'dart:typed_data';
+
 import 'ai.dart' show correctedExample, findByName;
-import 'matching.dart' show Idf, termVector, weightedVector;
+import 'matching.dart' show Idf, cosine, termVector, weightedVector;
+import 'meaning.dart' show blendSimilarity, meaningCosine, meaningScore;
 import 'archive.dart';
 import 'models.dart';
 import 'organize.dart' show drivePath;
@@ -216,45 +219,6 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
   return changed;
 }
 
-/// La sottocartella in cui tieni (quasi) tutti i documenti di una categoria,
-/// per esempio "Via alessandrina" dentro "Casa". Si ricava dai documenti
-/// che hai sistemato tu (spostandoli su Drive o scrivendo la cartella):
-/// se almeno 2 e almeno il 70% stanno lì, anche i documenti nuovi della
-/// categoria ci vanno, invece di aprire cartelle parallele come "Casa/2026".
-String? categoryRoot(Archive a, String? typeId) {
-  final t = a.type(typeId);
-  if (t == null || t.id == healthTypeId) return null;
-  final tn = normalize(t.name.trim());
-  final counts = <String, int>{};
-  final shown = <String, String>{};
-  var total = 0;
-  for (final d in a.activeDocuments) {
-    if (d.typeId != t.id || d.inTrash) continue;
-    List<String>? segs;
-    final pinned = d.pinnedFolder;
-    if (pinned != null && pinned.isNotEmpty) {
-      segs = pinned;
-    } else {
-      final p = a.storagePath(d.storagePathId);
-      if (p != null && isLearnedPath(p)) segs = p.template.split('/')..removeLast();
-    }
-    if (segs == null) continue;
-    final i = segs.indexWhere((s) => normalize(s.trim()) == tn);
-    if (i < 0) continue;
-    total++;
-    if (i + 1 >= segs.length) continue;
-    final next = segs[i + 1].trim();
-    if (next.isEmpty || next.contains('{') || _yearRe.hasMatch(next) || _isMonth(next)) continue;
-    if (a.config.people.any((p) => normalize(p.name) == normalize(next))) continue;
-    final k = normalize(next);
-    counts[k] = (counts[k] ?? 0) + 1;
-    shown[k] ??= next;
-  }
-  if (counts.isEmpty) return null;
-  final top = counts.entries.reduce((x, y) => x.value >= y.value ? x : y);
-  return top.value >= 2 && top.value >= total * 0.7 ? shown[top.key] : null;
-}
-
 /// La cartella attuale del documento, da mostrare e modificare
 /// (es. "Casa/Box via Roma/2026").
 String folderOf(Archive a, Document d) => drivePath(a, d).$1.join('/');
@@ -312,10 +276,76 @@ double folderMatch(Map<String, double> profile, Document d) {
   return total == 0 ? 0 : got / total;
 }
 
+/// Quanto ogni tua sottocartella (della stessa categoria) è adatta al
+/// documento, dalla migliore. Conta:
+/// - quanto somiglia ai documenti che ci hai messo tu (a parole e, se c'è la
+///   rete neurale, per significato);
+/// - le parole che distinguono quella sottocartella dalle altre;
+/// - lo stesso mittente (es. l'amministratore di quel palazzo);
+/// - l'indicazione dell'AI, che legge il documento con l'elenco delle tue
+///   sottocartelle.
+List<(StoragePath, double)> rankSubfolders(
+  Archive a,
+  Document d, {
+  String? aiHint,
+  Float32List? meaning,
+  Float32List? Function(Document)? meaningOf,
+}) {
+  final type = d.typeId;
+  if (type == null) return const [];
+  final idf = Idf.of(a);
+  final v = weightedVector(d.content, idf);
+  final hint = aiHint == null ? '' : normalize(aiHint.replaceFirst(RegExp(r'^[^:/]*:\s*'), '')).trim();
+  final out = <(StoragePath, double)>[];
+  for (final p in a.activeStoragePaths) {
+    if (p.id == healthPathId || !isLearnedPath(p) || !learnedPathFits(a, p, d)) continue;
+    final examples = [
+      for (final o in a.activeDocuments)
+        if (o.id != d.id && o.storagePathId == p.id && o.typeId == type && !o.inTrash) o,
+    ];
+    if (examples.isEmpty && hint.isEmpty) continue;
+    // Somiglianza con i documenti della cartella: media dei due più simili.
+    final sims = <double>[];
+    for (final o in examples) {
+      final words = v.isEmpty ? 0.0 : cosine(v, weightedVector(o.content, idf));
+      final om = meaningOf?.call(o);
+      final m = meaning != null && om != null ? meaningScore(meaningCosine(meaning, om)) : null;
+      sims.add(blendSimilarity(words, m));
+    }
+    sims.sort((x, y) => y.compareTo(x));
+    final near = sims.isEmpty ? 0.0 : (sims.length == 1 ? sims.first * 0.9 : (sims[0] + sims[1]) / 2);
+    final nearScore = ((near - 0.15) / 0.45).clamp(0.0, 1.0);
+    final profile = folderMatch(folderProfile(a, p, type), d);
+    var score = 0.55 * nearScore + 0.45 * profile;
+    if (d.correspondentId != null && examples.any((o) => o.correspondentId == d.correspondentId)) score += 0.15;
+    if (hint.length >= 3) {
+      final name = normalize(p.name);
+      final last = normalize(p.name.split('/').last.trim());
+      if (name == hint || hint.endsWith(name) || (last.length >= 3 && hint.endsWith(last))) {
+        score += 0.35;
+      } else if (name.contains(hint) || hint.contains(name)) {
+        score += 0.15;
+      }
+    }
+    out.add((p, score));
+  }
+  out.sort((x, y) => y.$2.compareTo(x.$2));
+  return out;
+}
+
 /// Sceglie la sottocartella imparata per un documento nuovo: se è sicura la
 /// assegna; se è in bilico la propone ([Document.suggestedPathId]) perché
-/// l'app ne chieda conferma (con [ask] falso decide da sola).
-SubfolderDecision applySubfolder(Archive a, Document d, {bool ask = true, String? aiHint}) {
+/// l'app ne chieda conferma (con [ask] falso decide da sola). Sicura vuol
+/// dire: punteggio alto e nettamente migliore della seconda (due palazzi
+/// diversi non si confondono).
+SubfolderDecision applySubfolder(
+  Archive a,
+  Document d, {
+  bool ask = true,
+  String? aiHint,
+  Float32List? meaning,
+  Float32List? Function(Document)? meaningOf,
+}) {
   if (d.storagePathId != null || d.typeId == null) return SubfolderDecision.none;
   // Quasi uguale a un documento che hai messo tu in una sottocartella.
   final (example, score) = correctedExample(a, d, min: 0.6);
@@ -332,26 +362,19 @@ SubfolderDecision applySubfolder(Archive a, Document d, {bool ask = true, String
     d.storagePathId = exPath.id;
     return SubfolderDecision.assigned;
   }
-  // Le parole tipiche delle tue sottocartelle (e il suggerimento dell'AI).
-  StoragePath? best;
-  var bestScore = 0.0;
-  for (final p in a.activeStoragePaths) {
-    if (!isLearnedPath(p) || !learnedPathFits(a, p, d)) continue;
-    var s = folderMatch(folderProfile(a, p, d.typeId!), d);
-    if (aiHint != null && normalize(p.name).contains(normalize(aiHint))) s += 0.3;
-    if (aiHint != null && normalize(aiHint).contains(normalize(p.name))) s += 0.3;
-    if (s > bestScore) {
-      bestScore = s;
-      best = p;
-    }
-  }
-  if (best == null) return SubfolderDecision.none;
-  if (bestScore >= 0.6 || (!ask && bestScore >= 0.4)) {
+  final ranked = rankSubfolders(a, d, aiHint: aiHint, meaning: meaning, meaningOf: meaningOf);
+  if (ranked.isEmpty) return SubfolderDecision.none;
+  final (best, bestScore) = ranked.first;
+  final second = ranked.length > 1 ? ranked[1].$2 : 0.0;
+  final clear = bestScore - second >= 0.15;
+  if ((bestScore >= 0.55 && clear) || (!ask && bestScore >= 0.4 && clear)) {
     d.storagePathId = best.id;
     return SubfolderDecision.assigned;
   }
-  if (ask && bestScore >= 0.3) {
-    d.suggestedPathId = best.id;
+  if (ask && bestScore >= 0.25) {
+    d
+      ..suggestedPathId = best.id
+      ..suggestedPaths = [for (final (p, s) in ranked.take(3)) if (s >= 0.2) p.id];
     return SubfolderDecision.ask;
   }
   return SubfolderDecision.none;

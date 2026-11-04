@@ -480,7 +480,7 @@ class DocQuestion {
   String get text => switch (kind) {
         QuestionKind.person => 'Di chi è questo documento?',
         QuestionKind.category => 'Che documento è?',
-        QuestionKind.folder => 'Va nella tua sottocartella?',
+        QuestionKind.folder => 'In quale tua cartella va?',
       };
 }
 
@@ -499,7 +499,9 @@ List<DocQuestion> openQuestions(Archive a) {
     }
     final sp = a.storagePath(d.suggestedPathId);
     if (sp != null && d.storagePathId == null) {
-      out.add(DocQuestion(d, QuestionKind.folder, [sp.id, '']));
+      // Le cartelle più probabili (es. due palazzi diversi), più "nessuna".
+      final options = <String>{sp.id, ...?d.suggestedPaths}.where((id) => a.storagePath(id) != null).take(3);
+      out.add(DocQuestion(d, QuestionKind.folder, [...options, '']));
       continue;
     }
     if (a.config.people.isNotEmpty &&

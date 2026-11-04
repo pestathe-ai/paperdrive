@@ -3,8 +3,7 @@
 library;
 
 import 'archive.dart';
-import 'drive_learning.dart' show categoryRoot, learnedPathFits;
-import 'text_utils.dart' show normalize;
+import 'drive_learning.dart' show learnedPathFits;
 import 'extract.dart';
 import 'matching.dart' show Idf, cosine, matchText, weightedVector;
 import 'models.dart';
@@ -184,18 +183,6 @@ String pathTemplateFor(Archive a, Document d) {
       .toList();
   if (name.isEmpty) name = safeName(d.title.isEmpty ? d.id : d.title);
   var folders = parts.take(6).toList();
-  // Documento senza sottocartella: se tieni quasi tutta la categoria in una
-  // tua sottocartella ("Casa/Via alessandrina"), va lì anche lui.
-  if (d.storagePathId == null) {
-    final root = categoryRoot(a, d.typeId);
-    final type = a.type(d.typeId);
-    if (root != null && type != null) {
-      final i = folders.indexWhere((f) => normalize(f) == normalize(safeName(type.name)));
-      if (i >= 0 && (i + 1 >= folders.length || normalize(folders[i + 1]) != normalize(safeName(root)))) {
-        folders.insert(i + 1, safeName(root));
-      }
-    }
-  }
   // Cartella scelta a mano: si rispetta esattamente.
   final pinned = d.pinnedFolder;
   if (pinned != null && pinned.isNotEmpty) {

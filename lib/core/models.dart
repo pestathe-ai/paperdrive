@@ -305,6 +305,7 @@ class Document with Syncable {
     this.userEdited = false,
     this.titleEdited = false,
     this.suggestedPathId,
+    this.suggestedPaths,
     this.pinnedFolder,
     this.amount,
     this.amountEdited = false,
@@ -397,6 +398,9 @@ class Document with Syncable {
   /// Sottocartella proposta quando l'app non è sicura (si chiede all'utente).
   String? suggestedPathId;
 
+  /// Le sottocartelle più probabili (per la domanda), dalla migliore.
+  List<String>? suggestedPaths;
+
   /// Cartella scelta a mano (spostando il file su Drive o scrivendola
   /// nell'app): il documento resta esattamente lì, es. "Casa/2026/Box".
   List<String>? pinnedFolder;
@@ -457,6 +461,7 @@ class Document with Syncable {
         if (fileRev > 0) 'rev': fileRev,
         if (userEdited) 'ue': true,
         if (suggestedPathId != null) 'sp': suggestedPathId,
+        if (suggestedPaths != null && suggestedPaths!.isNotEmpty) 'sps': suggestedPaths,
         if (pinnedFolder != null && pinnedFolder!.isNotEmpty) 'pf': pinnedFolder,
         if (titleEdited) 'te': true,
         if (amount != null) 'am': amount,
@@ -499,6 +504,7 @@ class Document with Syncable {
         fileRev: (j['rev'] as num?)?.toInt() ?? 0,
         userEdited: j['ue'] as bool? ?? false,
         suggestedPathId: j['sp'] as String?,
+        suggestedPaths: (j['sps'] as List?)?.map((e) => '$e').toList(),
         pinnedFolder: (j['pf'] as List?)?.map((e) => '$e').toList(),
         titleEdited: j['te'] as bool? ?? false,
         amount: (j['am'] as num?)?.toDouble(),
