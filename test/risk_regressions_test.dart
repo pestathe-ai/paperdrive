@@ -127,4 +127,31 @@ void main() {
     expect(d.id.contains('/'), isFalse);
     expect(safeDocId(d.id), isTrue);
   });
+
+  group('sottocartella principale di una categoria', () {
+    Archive casa(int moved) {
+      final a = Archive.starter();
+      ensurePeopleEntities(a);
+      for (var i = 0; i < moved; i++) {
+        a.documents['m$i'] = Document(id: 'm$i', title: 'Spese $i', typeId: 'st-casa', created: DateTime(2026, 1, i + 1))
+          ..pinnedFolder = ['Casa', 'Via alessandrina', i.isEven ? 'Box' : '2026']
+          ..userEdited = true;
+      }
+      return a;
+    }
+
+    test('se tieni la Casa in "Via alessandrina", anche i documenti nuovi vanno lì', () {
+      final a = casa(3);
+      final d = Document(title: 'Verbale assemblea', typeId: 'st-casa', created: DateTime(2026, 11, 4));
+      a.documents[d.id] = d;
+      expect(drivePath(a, d).$1, ['Casa', 'Via alessandrina', '2026']);
+    });
+
+    test('con un solo documento spostato non si decide ancora', () {
+      final a = casa(1);
+      final d = Document(title: 'Verbale assemblea', typeId: 'st-casa', created: DateTime(2026, 11, 4));
+      a.documents[d.id] = d;
+      expect(drivePath(a, d).$1, ['Casa', '2026']);
+    });
+  });
 }

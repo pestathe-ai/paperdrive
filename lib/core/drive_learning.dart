@@ -216,6 +216,45 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
   return changed;
 }
 
+/// La sottocartella in cui tieni (quasi) tutti i documenti di una categoria,
+/// per esempio "Via alessandrina" dentro "Casa". Si ricava dai documenti
+/// che hai sistemato tu (spostandoli su Drive o scrivendo la cartella):
+/// se almeno 2 e almeno il 70% stanno lì, anche i documenti nuovi della
+/// categoria ci vanno, invece di aprire cartelle parallele come "Casa/2026".
+String? categoryRoot(Archive a, String? typeId) {
+  final t = a.type(typeId);
+  if (t == null || t.id == healthTypeId) return null;
+  final tn = normalize(t.name.trim());
+  final counts = <String, int>{};
+  final shown = <String, String>{};
+  var total = 0;
+  for (final d in a.activeDocuments) {
+    if (d.typeId != t.id || d.inTrash) continue;
+    List<String>? segs;
+    final pinned = d.pinnedFolder;
+    if (pinned != null && pinned.isNotEmpty) {
+      segs = pinned;
+    } else {
+      final p = a.storagePath(d.storagePathId);
+      if (p != null && isLearnedPath(p)) segs = p.template.split('/')..removeLast();
+    }
+    if (segs == null) continue;
+    final i = segs.indexWhere((s) => normalize(s.trim()) == tn);
+    if (i < 0) continue;
+    total++;
+    if (i + 1 >= segs.length) continue;
+    final next = segs[i + 1].trim();
+    if (next.isEmpty || next.contains('{') || _yearRe.hasMatch(next) || _isMonth(next)) continue;
+    if (a.config.people.any((p) => normalize(p.name) == normalize(next))) continue;
+    final k = normalize(next);
+    counts[k] = (counts[k] ?? 0) + 1;
+    shown[k] ??= next;
+  }
+  if (counts.isEmpty) return null;
+  final top = counts.entries.reduce((x, y) => x.value >= y.value ? x : y);
+  return top.value >= 2 && top.value >= total * 0.7 ? shown[top.key] : null;
+}
+
 /// La cartella attuale del documento, da mostrare e modificare
 /// (es. "Casa/Box via Roma/2026").
 String folderOf(Archive a, Document d) => drivePath(a, d).$1.join('/');
