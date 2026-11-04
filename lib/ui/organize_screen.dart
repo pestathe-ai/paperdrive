@@ -269,7 +269,7 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
               title: const Text('Chiedimi quando non è sicura'),
               subtitle: const Text(
                 'Solo nei casi in bilico (categoria, persona, tue sottocartelle). '
-                'Spento: decide sempre da sola, come Paperless.',
+                'Spento: decide sempre da sola.',
               ),
               value: !app.settings.neverAsk,
               onChanged: (v) {
@@ -283,12 +283,12 @@ class _OrganizeScreenState extends State<OrganizeScreen> {
                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.psychology_outlined),
               title: Text(app.training
-                  ? 'Addestramento in corso…'
+                  ? 'Preparazione degli esempi…'
                   : app.classifier == null
                       ? 'Non ancora addestrato'
-                      : 'Addestrato su ${app.classifier!.trainedOn} documenti'),
+                      : 'Impara da ${app.classifier!.trainedOn} documenti'),
               subtitle: const Text(
-                'Come in Paperless: impara dai documenti già esaminati (senza il tag "Da esaminare") '
+                'Impara dai documenti già esaminati e da quelli che correggi: per un documento nuovo guarda i più simili '
                 'e assegna tag, corrispondenti, tipi e percorsi con algoritmo "Automatica".',
               ),
               trailing: IconButton(

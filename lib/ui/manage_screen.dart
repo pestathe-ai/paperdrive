@@ -284,7 +284,7 @@ class _EntityEditorState extends State<EntityEditor> {
     final Matchable? m = widget.tag ?? widget.entity;
     name = TextEditingController(text: m?.name ?? '');
     pattern = TextEditingController(text: m?.pattern ?? '');
-    // Come Paperless: i nuovi elementi usano l'assegnazione automatica.
+    // I nuovi elementi imparano dagli esempi (assegnazione automatica).
     algorithm = m?.algorithm ?? MatchAlgorithm.auto;
     ci = m?.caseInsensitive ?? true;
     color = widget.tag?.color ?? tagPalette[DateTime.now().millisecond % tagPalette.length];

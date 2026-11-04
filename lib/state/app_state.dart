@@ -11,7 +11,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../core/ai.dart';
 import '../core/archive.dart';
 import '../core/assistant.dart';
-import '../core/classifier.dart';
+import '../core/learner.dart';
 import '../core/dates.dart';
 import '../core/drive_learning.dart';
 import '../core/extract.dart' show detectIssuer;
@@ -53,9 +53,9 @@ class AppState extends ChangeNotifier {
   late final DriveSync drive;
   late final MailImporter mailImporter;
 
-  /// Classificatore automatico (come Paperless), addestrato sui documenti
+  /// Apprendimento per esempi, dai documenti
   /// già esaminati. Null finché non ci sono dati.
-  DocumentClassifier? classifier;
+  Learner? classifier;
   bool training = false;
   Timer? _trainTimer;
   String? _trainedSignature;
@@ -131,7 +131,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Firma di ciò che il classificatore impara: se non cambia, non si
-  /// riaddestra (come il controllo "last_doc_change" di Paperless).
+  /// ricalcola.
   String _trainingSignature() {
     final inbox = archive.inboxTags.map((t) => t.id).toSet();
     final b = StringBuffer();
@@ -165,7 +165,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final json = archive.toJson();
-      classifier = await Isolate.run(() => DocumentClassifier.train(Archive.fromJson(json)));
+      classifier = await Isolate.run(() => Learner.train(Archive.fromJson(json)));
       _trainedSignature = sig;
     } catch (_) {
       // Senza classificatore valgono comunque le regole.
@@ -739,7 +739,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Importa tutti i file della cartella "Da importare" su Drive, come la
-  /// cartella di importazione di Paperless. Le sottocartelle diventano
+  /// cartella di importazione. Le sottocartelle diventano
   /// categoria, tag e anno; i file importati vanno nel cestino di Drive.
   Future<String> importDriveInbox() async {
     if (!settings.driveEnabled) return 'Collega prima Google Drive';

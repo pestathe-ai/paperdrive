@@ -2,9 +2,9 @@
 
 *un'app Dom Studio* (nome interno del progetto: Paperdrive).
 
-Archivio di documenti per Android ispirato a [Paperless-ngx](https://docs.paperless-ngx.com/):
-scansioni e PDF con OCR, tag, corrispondenti, tipi, ricerca nel testo e regole
-automatiche. Niente server da mantenere: tutto gira sul telefono e si
+Archivio di documenti per Android: scansioni e PDF con OCR, persone,
+categorie, mittenti, tag, ricerca nel testo, AI sul telefono e un motore che
+impara dal tuo ordine. Niente server da mantenere: tutto gira sul telefono e si
 sincronizza su **Google Drive**. L'APK viene compilato da GitHub Actions.
 
 ## Funzioni
@@ -40,7 +40,7 @@ casa restano comuni.
 
 ### Cartella di importazione su Drive (v0.9)
 
-Come la *consume folder* di Paperless: copia i documenti (anche intere cartelle, per esempio da
+Copia i documenti (anche intere cartelle, per esempio da
 Dropbox) in `Paperdrive/Da importare` su Google Drive e premi *Menu → Importa da Drive* (oppure
 attiva l'importazione automatica all'apertura). Ogni file viene letto, classificato e archiviato,
 poi spostato nel cestino di Drive. L'ordine fatto a mano viene rispettato: la prima cartella
@@ -52,14 +52,13 @@ già chiaro resta il titolo. L'app impara da questi documenti come classifichi e
 Quando correggi categoria, mittente o titolo di un documento, l'app impara: i documenti simili
 successivi vengono classificati e rinominati allo stesso modo.
 
-### Fedele a Paperless-ngx (v0.6)
+### Motore di catalogazione (v0.19)
 
-La logica di classificazione è portata dal codice di Paperless-ngx:
-- **Regole** come `matching.py`: Una qualsiasi parola, Tutte le parole, Testo esatto, Regex, Approssimata (somiglianza ≥ 90, senza punteggiatura), Automatica.
-- **Classificatore automatico** come `classifier.py`: impara dai documenti già esaminati (senza tag *Da esaminare*), solo per le etichette con algoritmo *Automatica*; parole e coppie di parole → rete neurale con 100 neuroni nascosti; soglia 0.3 per corrispondente/tipo/percorso, 0.5 per i tag. Si riaddestra da solo dopo le modifiche.
-- **Suggerimenti** nel dettaglio del documento, come nell'interfaccia di Paperless.
-- **Segnaposti** anche con la sintassi di Paperless (`{{ correspondent }}`, `{{ created_year }}`, `{{ created_month_name }}`…).
-- I nuovi tag, corrispondenti e tipi usano *Automatica*, come nell'interfaccia di Paperless.
+Progettato da zero per D. Paper Lab (dettagli in [DESIGN.md](DESIGN.md)):
+- **Regole a parole chiave** sulle parole del testo: Una qualsiasi parola, Tutte le parole, Frase esatta, Espressione regolare e **Tollerante** (accetta parole con errori dell'OCR).
+- **Apprendimento per esempi**: per un documento nuovo guarda i documenti già sistemati più simili e usa la risposta su cui sono d'accordo. Funziona già con pochi esempi, ogni correzione conta subito, e si sa sempre su quali documenti si è basato.
+- **Ordine di fiducia**: regole tue > ciò che ha imparato (se è sicuro) > regole predefinite > AI sul telefono per i casi liberi.
+- **Il tuo ordine su Drive**: cartelle per persona, sottocartelle tue, spostamenti e rinomine diventano esempi.
 
 ### Archiviazione automatica (v0.3)
 
@@ -69,7 +68,7 @@ Ogni documento che **scansioni**, **importi**, ricevi per **email** o **condivid
 2. **diviso** se nella scansione c'è un foglio separatore con codice a barre (PATCH T) e numerato con l'**ASN** letto dall'etichetta;
 3. **classificato**: categoria (14 categorie predefinite già pronte: Bolletta, Fattura, Scontrino, Banca, Busta paga, Tasse, Sanità, Assicurazione, Contratto, Auto, Casa, Scuola, Lavoro, Garanzia), corrispondente, tag, percorso; vince la regola più pertinente;
 4. **rinominato** con un modello, es. `Bolletta Enel 03-2024`;
-5. **archiviato su Google Drive** in cartelle per categoria e anno, es. `Paperdrive/Bolletta/2024/2024-03-05 Bolletta Enel 03-2024.pdf` (modello modificabile, più *percorsi* personalizzati come in Paperless). Se cambi categoria o titolo, il file su Drive viene spostato e rinominato.
+5. **archiviato su Google Drive** in cartelle per categoria e anno, es. `Paperdrive/Bolletta/2024/2024-03-05 Bolletta Enel 03-2024.pdf` (modello modificabile, più *percorsi* personalizzati). Se cambi categoria o titolo, il file su Drive viene spostato e rinominato.
 
 Tutto si regola da *Menu → Archiviazione automatica*, con anteprima del risultato.
 
@@ -82,7 +81,7 @@ Tutto si regola da *Menu → Archiviazione automatica*, con anteprima del risult
 - **Versione archiviata PDF/A** (novità v0.2): per scansioni e foto viene creato un PDF/A-3b con il testo dell'OCR invisibile sopra l'immagine, quindi ricercabile e copiabile in qualsiasi lettore PDF. Validato con veraPDF in CI.
 - **Data del documento** riconosciuta dal testo, con le altre date trovate proposte con un tocco.
 - **Tag**, **corrispondenti**, **tipi di documento**, **campi personalizzati**, **note**, **numero d'archivio (ASN)**, tag **"Da esaminare"**.
-- **Regole automatiche** come Paperless: una parola, tutte, testo esatto, regex, approssimata e automatica (impara dai documenti già classificati).
+- **Regole automatiche**: una parola, tutte, frase esatta, espressione regolare, tollerante e automatica (impara dai documenti già sistemati).
 - **Flussi di lavoro** (novità v0.2): quando un documento viene *aggiunto* (da scansione, file o email) o *modificato*, se valgono le condizioni (nome file con `*`, testo, tag presenti/assenti, corrispondente, tipo) esegue le azioni: titolo con segnaposti (`{correspondent}`, `{created_year}`, `{campo:Importo}`…), aggiungi/togli tag, corrispondente, tipo, campi, ASN, segna esaminato, nota. Ordine trascinabile ed esecuzione sui documenti esistenti.
 - **Importazione da email** (novità v0.2): account IMAP (server trovato in automatico dall'indirizzo), regole con filtri su mittente, destinatario, oggetto, testo, nome allegato, età e non letti; importa allegati e/o il testo del messaggio come PDF; assegna tag, tipo, corrispondente (anche dal mittente); poi segna come letto, sposta o contrassegna. Ogni messaggio viene elaborato una volta sola.
 - **Più utenti** (novità v0.2): invita altre persone all'archivio (modifica o sola lettura) direttamente dall'app; chi è invitato sceglie "Usa un archivio condiviso con me". Ogni documento ricorda chi l'ha aggiunto e chi l'ha modificato; filtro "Solo aggiunti da me"; modalità sola lettura. **Link pubblici** a singoli documenti, revocabili.

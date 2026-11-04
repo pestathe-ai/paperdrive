@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:paperdrive/core/archive.dart';
-import 'package:paperdrive/core/classifier.dart';
+import 'package:paperdrive/core/learner.dart';
 import 'package:paperdrive/core/dates.dart';
 import 'package:paperdrive/core/extract.dart';
 import 'package:paperdrive/core/matching.dart';
@@ -95,7 +95,7 @@ void main() {
     });
   });
 
-  group('regole come Paperless (matching.py)', () {
+  group('regole a parole chiave', () {
     Tag rule(MatchAlgorithm algo, String p) => Tag(name: 'x', algorithm: algo, pattern: p);
     const text = 'Gentile cliente,\nla fattura   ENEL ENERGIA\r\ndi marzo';
 
@@ -110,12 +110,12 @@ void main() {
       expect(matchesRule(rule(MatchAlgorithm.any, 'citt'), 'Comune della città di Roma'), isFalse);
     });
 
-    test('approssimata ignora la punteggiatura (soglia 90)', () {
+    test('tollerante: parole con errori e punteggiatura', () {
       expect(matchesRule(rule(MatchAlgorithm.fuzzy, 'Agenzia delle Entrate'), 'AGENZIA DELLE-ENTRATE, Roma'), isTrue);
       expect(matchesRule(rule(MatchAlgorithm.fuzzy, 'Agenzia delle Entrate'), 'Agenzia Viaggi Roma'), isFalse);
     });
 
-    test('segnaposti con la sintassi di Paperless', () {
+    test('segnaposti con doppie graffe', () {
       final a = Archive();
       final enel = NamedEntity(name: 'Enel');
       a.correspondents[enel.id] = enel;
@@ -125,7 +125,7 @@ void main() {
     });
   });
 
-  group('classificatore come Paperless (classifier.py)', () {
+  group('apprendimento per esempi', () {
     Archive build() {
       final a = Archive.starter();
       final enel = NamedEntity(id: 'enel', name: 'Enel', algorithm: MatchAlgorithm.auto);
@@ -154,7 +154,7 @@ void main() {
 
     test('impara corrispondenti e tag dagli esempi', () {
       final a = build();
-      final clf = DocumentClassifier.train(a, minTraining: 0)!;
+      final clf = Learner.train(a, minTraining: 0)!;
       expect(clf.trainedOn, 6);
       expect(clf.predictCorrespondent('servizio elettrico nazionale nuova bolletta kwh'), 'enel');
       expect(clf.predictCorrespondent('teleriscaldamento milano calore febbraio'), 'a2a');
@@ -169,7 +169,7 @@ void main() {
       for (final d in a.documents.values) {
         d.tagIds.add(a.inboxTags.first.id);
       }
-      expect(DocumentClassifier.train(a), isNull);
+      expect(Learner.train(a), isNull);
     });
 
     test('impara anche le voci con regole a parole chiave (assegnate a mano)', () {
@@ -177,15 +177,9 @@ void main() {
       for (final c in a.correspondents.values) {
         c.algorithm = MatchAlgorithm.any;
       }
-      final clf = DocumentClassifier.train(a, minTraining: 0)!;
+      final clf = Learner.train(a, minTraining: 0)!;
       expect(clf.predictCorrespondent('teleriscaldamento milano calore febbraio'), 'a2a');
     });
-  });
-
-  test('preprocess come RE_WORD di Paperless', () {
-    expect(preprocess('Fattura N.634 — Città'), ['fattura', 'n', '634', 'città']);
-    final v = Vectorizer.fit(['a b c', 'a b d']);
-    expect(v.vocabulary.keys, containsAll(['a', 'b', 'a b']));
   });
 
   test('workflow con segnaposti al momento dell\'aggiunta', () {
@@ -276,7 +270,7 @@ void main() {
       }
       a.documents['o'] = Document(id: 'o', title: 'y', content: 'referto ospedale visita cardiologica esame', typeId: 'st-sanita')
         ..userEdited = true;
-      final clf = DocumentClassifier.train(a, minTraining: 0)!;
+      final clf = Learner.train(a, minTraining: 0)!;
       final n = Document(title: 'z', content: label('2026.10.20', 'zzz'));
       // Le parole chiave predefinite non bastano: decide ciò che ha imparato.
       final r = computeMatches(a, n, classifier: clf);

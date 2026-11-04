@@ -250,7 +250,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     final a = app.archive;
     final tags = d.tagIds.map(a.tag).whereType<Tag>().toList();
     final dates = findDates(d.content).take(6).toList();
-    // Suggerimenti come in Paperless: cosa assegnerebbero regole e
+    // Suggerimenti: cosa assegnerebbero regole e
     // classificatore, se diverso da quello attuale.
     final sug = computeMatches(a, d, classifier: app.classifier);
     final sugCorr = sug.correspondentId != d.correspondentId ? a.correspondent(sug.correspondentId) : null;

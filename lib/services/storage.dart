@@ -28,7 +28,7 @@ class Settings {
   /// restano su Drive e si scaricano quando si aprono).
   bool keepFilesLocal = false;
 
-  /// Non fare mai domande: decide sempre l'app (come Paperless).
+  /// Non fare mai domande: decide sempre l'app.
   bool neverAsk = false;
 
   /// Ultima riparazione delle cartelle su Drive (millisecondi).

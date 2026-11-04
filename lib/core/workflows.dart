@@ -1,4 +1,4 @@
-/// Flussi di lavoro come in Paperless-ngx: quando succede qualcosa
+/// Flussi di lavoro: quando succede qualcosa
 /// (documento aggiunto o modificato) e le condizioni sono vere, esegue
 /// delle azioni (titolo, tag, corrispondente, tipo, campi, ASN, note…).
 library;
@@ -303,7 +303,7 @@ Map<String, String> placeholderValues(Archive a, Document d, {bool facts = false
     '{original_filename}': name,
     '{asn}': d.asn?.toString() ?? '',
     '{owner}': d.owner ?? '',
-    // Nomi di Paperless-ngx.
+    // Nomi alternativi.
     '{created_year_short}': '${d.created.year % 100}'.padLeft(2, '0'),
     '{created_month_name}': _monthNames[d.created.month - 1],
     '{created_month_name_short}': _monthNames[d.created.month - 1].substring(0, 3),
@@ -335,7 +335,7 @@ String fillPlaceholders(
   String Function(String key)? empty,
   String Function(String value)? clean,
 }) {
-  // Accetta anche la sintassi di Paperless-ngx: {{ correspondent }}.
+  // Accetta anche la sintassi con doppie graffe: {{ correspondent }}.
   template = template.replaceAllMapped(
     RegExp(r'\{\{\s*([a-z_]+(?::[^}]+)?)\s*\}\}'),
     (m) => '{${m.group(1)}}',

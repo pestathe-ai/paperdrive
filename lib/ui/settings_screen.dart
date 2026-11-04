@@ -303,7 +303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SwitchListTile(
             secondary: const Icon(Icons.picture_as_pdf_outlined),
             title: const Text('Crea versione PDF/A ricercabile'),
-            subtitle: const Text('Per scansioni e foto: PDF/A con il testo selezionabile, come Paperless'),
+            subtitle: const Text('Per scansioni e foto: PDF/A con il testo selezionabile'),
             value: s.makeArchive,
             onChanged: (v) {
               s.makeArchive = v;

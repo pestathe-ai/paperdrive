@@ -1,4 +1,4 @@
-/// Cartella di importazione (come la "consume folder" di Paperless): i
+/// Cartella di importazione: i
 /// documenti già ordinati a mano portano con sé le cartelle in cui stavano,
 /// che diventano categoria, tag e anno.
 library;

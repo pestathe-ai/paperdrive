@@ -38,7 +38,7 @@ extension DocSourceLabel on DocSource {
       };
 }
 
-/// Algoritmi di assegnazione automatica, come in Paperless-ngx.
+/// Come si riconosce un tag, mittente, categoria o cartella.
 enum MatchAlgorithm { none, any, all, literal, regex, fuzzy, auto }
 
 extension MatchAlgorithmLabel on MatchAlgorithm {
@@ -46,9 +46,9 @@ extension MatchAlgorithmLabel on MatchAlgorithm {
         MatchAlgorithm.none => 'Nessuna',
         MatchAlgorithm.any => 'Una qualsiasi parola',
         MatchAlgorithm.all => 'Tutte le parole',
-        MatchAlgorithm.literal => 'Testo esatto',
+        MatchAlgorithm.literal => 'Frase esatta',
         MatchAlgorithm.regex => 'Espressione regolare',
-        MatchAlgorithm.fuzzy => 'Approssimata',
+        MatchAlgorithm.fuzzy => 'Tollerante (errori dell\'OCR)',
         MatchAlgorithm.auto => 'Automatica (impara)',
       };
 
@@ -670,7 +670,7 @@ String _dateAtEnd(String t) => t.endsWith('{created} {title}')
     ? '${t.substring(0, t.length - '{created} {title}'.length)}{title} {data}'
     : t;
 
-/// Percorso di archiviazione su Drive (come gli "storage path" di Paperless):
+/// Percorso di archiviazione su Drive:
 /// cartelle e nome del file costruiti dai dati del documento.
 class StoragePath with Syncable implements Matchable {
   StoragePath({

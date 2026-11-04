@@ -6,7 +6,7 @@ import '../services/drive_sync.dart' show InboxFile;
 import '../state/app_state.dart';
 import 'widgets.dart';
 
-/// Cartella di importazione su Drive, come la "consume folder" di Paperless.
+/// Cartella di importazione su Drive: i file messi lì vengono archiviati.
 class DriveImportScreen extends StatefulWidget {
   const DriveImportScreen({super.key});
 
@@ -153,7 +153,7 @@ class _DriveImportScreenState extends State<DriveImportScreen> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Importa in automatico all\'apertura'),
-                  subtitle: const Text('Come Paperless: basta mettere i file nella cartella'),
+                  subtitle: const Text('Basta mettere i file nella cartella'),
                   value: s.autoImport,
                   onChanged: (v) {
                     s.autoImport = v;

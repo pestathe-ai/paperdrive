@@ -1,4 +1,4 @@
-/// Riconosce la data di un documento dal suo testo (come fa Paperless-ngx).
+/// Riconosce la data di un documento dal suo testo.
 library;
 
 import 'text_utils.dart';

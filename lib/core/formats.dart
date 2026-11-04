@@ -1,5 +1,5 @@
-/// Formati di file che l'archivio sa importare, come Paperless-ngx (che usa
-/// Tika e Gotenberg): PDF, immagini, testo, email e documenti Office.
+/// Formati di file che l'archivio sa importare: PDF, immagini, testo, email
+/// e documenti Office.
 library;
 
 enum FileKind {

@@ -45,40 +45,6 @@ List<String> splitTerms(String pattern) {
   return terms;
 }
 
-/// Distanza di modifica minima tra [pattern] e una qualsiasi sottostringa di
-/// [text] (algoritmo di Sellers). Serve per la corrispondenza "approssimata".
-int bestSubstringDistance(String pattern, String text) {
-  final m = pattern.length;
-  if (m == 0) return 0;
-  if (text.isEmpty) return m;
-  var prev = List<int>.generate(m + 1, (i) => i);
-  var best = prev[m];
-  for (var j = 1; j <= text.length; j++) {
-    final cur = List<int>.filled(m + 1, 0);
-    cur[0] = 0; // una sottostringa può iniziare ovunque
-    final tc = text.codeUnitAt(j - 1);
-    for (var i = 1; i <= m; i++) {
-      final cost = pattern.codeUnitAt(i - 1) == tc ? 0 : 1;
-      final a = prev[i - 1] + cost;
-      final b = prev[i] + 1;
-      final c = cur[i - 1] + 1;
-      cur[i] = a < b ? (a < c ? a : c) : (b < c ? b : c);
-    }
-    if (cur[m] < best) best = cur[m];
-    if (best == 0) return 0;
-    prev = cur;
-  }
-  return best;
-}
-
-/// Somiglianza 0..1 tra [pattern] e la parte di [text] più simile.
-double partialSimilarity(String pattern, String text) {
-  final p = normalize(pattern).trim();
-  if (p.isEmpty) return 0;
-  final d = bestSubstringDistance(p, normalize(text));
-  return 1 - d / p.length;
-}
-
 /// Pulisce il testo estratto dai PDF (PDFium usa `\r\n`, a volte `\r` da
 /// solo, spazi non separabili e trattini morbidi): righe con `\n`, spazi
 /// normali, niente spazi in fondo alle righe.

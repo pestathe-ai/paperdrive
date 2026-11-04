@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:paperdrive/core/archive.dart';
-import 'package:paperdrive/core/classifier.dart';
+import 'package:paperdrive/core/learner.dart';
 import 'package:paperdrive/core/dates.dart';
 import 'package:paperdrive/core/extract.dart';
 import 'package:paperdrive/core/mail_rules.dart';
@@ -30,11 +30,11 @@ void main() {
           ['fattura', 'enel energia', 'luce']);
     });
 
-    test('somiglianza approssimata tollera errori OCR', () {
-      expect(partialSimilarity('Agenzia Entrate', 'xx AGENZlA ENTRATE yy'),
-          greaterThanOrEqualTo(fuzzyThreshold));
-      expect(partialSimilarity('Agenzia Entrate', 'tutt altro testo qui'),
-          lessThan(fuzzyThreshold));
+    test('tollerante: accetta errori dell\'OCR, non parole diverse', () {
+      Tag r(String p) => Tag(name: 'x', algorithm: MatchAlgorithm.fuzzy, pattern: p);
+      expect(matchesRule(r('Agenzia Entrate'), 'xx AGENZlA ENTRATE yy'), isTrue);
+      expect(matchesRule(r('Agenzia Entrate'), 'tutt altro testo qui'), isFalse);
+      expect(matchesRule(r('IVA'), 'IVB'), isFalse); // parole corte: esatte
     });
   });
 
@@ -103,10 +103,10 @@ void main() {
       }
       final other = doc('o', 'Contratto affitto appartamento canone mensile');
       a.documents[other.id] = other;
-      // Senza classificatore "Automatica" non assegna nulla (come Paperless).
+      // Senza esempi "Automatica" non assegna nulla.
       final nuovo = doc('n', 'Referto visita ospedale esame');
       expect(computeMatches(a, nuovo).tagIds, isEmpty);
-      final clf = DocumentClassifier.train(a, minTraining: 0)!;
+      final clf = Learner.train(a, minTraining: 0)!;
       expect(computeMatches(a, nuovo, classifier: clf).tagIds, contains(medico.id));
       final affitto = doc('n2', 'Canone affitto appartamento');
       expect(computeMatches(a, affitto, classifier: clf).tagIds, isNot(contains(medico.id)));

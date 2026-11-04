@@ -1,4 +1,4 @@
-/// Account e regole di posta (come le "Regole email" di Paperless-ngx).
+/// Account e regole di posta: quali email importare e cosa fare dopo.
 /// Restano solo su questo telefono: contengono la password.
 library;
 
