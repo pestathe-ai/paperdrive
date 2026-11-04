@@ -544,6 +544,10 @@ String? _normalizeAmount(String raw) {
   return '$b,$dec €';
 }
 
+/// Scontrino o "documento commerciale".
+bool looksLikeReceipt(String text) =>
+    RegExp(r'documento\s+commerciale|totale\s+complessivo|scontrino', caseSensitive: false).hasMatch(text);
+
 /// La cifra più alta tra quelle che compaiono almeno due volte.
 String? _repeatedMax(String t) {
   final counts = <int, int>{};
@@ -576,6 +580,11 @@ const List<String> _amountLabels = [
   r'importo',
   r'totale',
   r'ammontare',
+  r'retta',
+  r'quota',
+  r'rata',
+  r'contributo',
+  r'canone',
 ];
 
 const String _number = r'(\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2}(?!\d))';
@@ -588,7 +597,7 @@ String? detectAmount(String text) {
   // quindi la cifra non sta accanto a "TOTALE COMPLESSIVO". Il totale è la
   // cifra più alta che compare più volte (totale, importo pagato, bancomat…);
   // i contanti dati e il resto compaiono una volta sola.
-  if (RegExp(r'documento\s+commerciale|totale\s+complessivo|scontrino', caseSensitive: false).hasMatch(t)) {
+  if (looksLikeReceipt(t)) {
     final total = _repeatedMax(t);
     if (total != null) return total;
   }

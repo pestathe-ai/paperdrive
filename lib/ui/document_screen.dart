@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:material_ui/material_ui.dart';
+
+import '../core/amounts.dart';
+import '../core/assistant.dart' show euro;
 import 'package:pdfrx/pdfrx.dart' show PdfViewer;
 import 'package:share_plus/share_plus.dart';
 
@@ -412,6 +415,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
         ),
         ListTile(
           contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.euro),
+          title: const Text('Importo'),
+          subtitle: Text(amountFor(d) == null
+              ? 'Nessuno · tocca per scriverlo'
+              : '${euro(amountFor(d)!)}${d.amountEdited ? '' : ' · letto dall\'app'}'),
+          trailing: const Icon(Icons.edit_outlined, size: 20),
+          onTap: app.readOnly ? null : () => editAmount(context, app, d),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.numbers),
           title: const Text('Numero d\'archivio (ASN)'),
           subtitle: Text(d.asn?.toString() ?? 'Nessuno'),
@@ -802,4 +815,23 @@ class _PreviewState extends State<_Preview> with AutomaticKeepAliveClientMixin {
       ],
     );
   }
+}
+
+/// Chiede l'importo del documento e lo salva (vuoto = nessun importo).
+Future<void> editAmount(BuildContext context, AppState app, Document d) async {
+  final current = amountFor(d);
+  final v = await askText(
+    context,
+    title: 'Importo',
+    label: 'Euro, es. 18,94 (vuoto per toglierlo)',
+    initial: current == null ? '' : euro(current).replaceAll(' €', ''),
+  );
+  if (v == null) return;
+  final t = v.trim();
+  final n = t.isEmpty ? null : parseEuro(t);
+  if (t.isNotEmpty && n == null) {
+    if (context.mounted) showMessage(context, 'Non è un importo valido');
+    return;
+  }
+  app.setAmount(d, n);
 }

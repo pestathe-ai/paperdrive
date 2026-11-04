@@ -23,6 +23,7 @@ class _AskScreenState extends State<AskScreen> {
   String? asked;
   String? answer;
   String? understood;
+  AskQuery? query;
   List<AskHit> hits = const [];
 
   @override
@@ -42,13 +43,14 @@ class _AskScreenState extends State<AskScreen> {
       asked = q;
       answer = null;
     });
-    final (query, found, text) = await app.ask(q);
+    final (query0, found, text) = await app.ask(q);
     if (!mounted) return;
     setState(() {
       thinking = false;
       hits = found;
+      query = query0;
       answer = text;
-      understood = query.describe(app.archive);
+      understood = query0.describe(app.archive);
     });
   }
 
@@ -197,8 +199,18 @@ class _AskScreenState extends State<AskScreen> {
     );
   }
 
+  /// Dopo una correzione dell'importo il totale si rifà.
+  void _recount() {
+    final q = query;
+    if (q == null) return;
+    setState(() => answer = answerText(app.archive, q, hits));
+  }
+
   Widget _result(Document d) {
     final a = app.archive;
+    final total = query?.intent == AskIntent.total;
+    final amount = amountOf(d);
+    final theme = Theme.of(context);
     final parts = [
       a.type(d.typeId)?.name,
       d.customFields[personFieldId],
@@ -212,6 +224,20 @@ class _AskScreenState extends State<AskScreen> {
         leading: DocThumb(d),
         title: Text(d.title, maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: Text(parts.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis),
+        // Nei totali: l'importo di ogni documento, da correggere con un tocco.
+        trailing: !total
+            ? null
+            : TextButton(
+                onPressed: app.readOnly
+                    ? null
+                    : () async {
+                        await editAmount(context, app, d);
+                        _recount();
+                      },
+                child: amount == null
+                    ? Text('Importo\nmancante', textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.error))
+                    : Text(euro(amount), style: const TextStyle(fontWeight: FontWeight.w700)),
+              ),
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => DocumentScreen(docId: d.id)),

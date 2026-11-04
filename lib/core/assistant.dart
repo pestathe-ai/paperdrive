@@ -10,9 +10,9 @@ library;
 import 'dart:convert';
 
 import 'ai.dart' show findByName;
+import 'amounts.dart';
 import 'archive.dart';
 import 'dates.dart' show findDates;
-import 'extract.dart' show detectAmount;
 import 'models.dart';
 import 'people.dart';
 import 'search.dart' show SearchIndex;
@@ -415,17 +415,8 @@ List<AskHit> runAsk(Archive a, AskQuery q, SearchIndex index) {
   return hits;
 }
 
-/// Importo in euro letto dal testo ("1.234,56 €" → 1234.56).
-double? amountOf(Document d) {
-  // Se il testo non lo dice chiaramente, vale la cifra alla fine del
-  // titolo ("Ticket farmacia 18,94"), che l'utente o l'AI hanno scritto.
-  final tm = RegExp(r'(\d+)[.,](\d{2})\s*(?:€|euro|eur)?$', caseSensitive: false).firstMatch(d.title.trim());
-  final s = detectAmount(d.content) ?? (tm == null ? null : '${tm[1]},${tm[2]}');
-  if (s == null) return null;
-  final m = RegExp(r'(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})').firstMatch(s);
-  if (m == null) return double.tryParse(s.replaceAll(RegExp(r'[^\d.]'), ''));
-  return double.parse('${m[1]!.replaceAll('.', '')}.${m[2]}');
-}
+/// Importo in euro del documento (il campo Importo, o letto dal testo).
+double? amountOf(Document d) => amountFor(d);
 
 String euro(double v) {
   final parts = v.toStringAsFixed(2).split('.');
@@ -467,7 +458,7 @@ String answerText(Archive a, AskQuery q, List<AskHit> hits) {
           ? ''
           : '\n${(byType.entries.toList()..sort((x, y) => y.value.compareTo(x.value))).map((e) => '${e.key}: ${euro(e.value)}').join(' · ')}';
       return 'Totale: ${euro(sum)} in $withAmount documenti'
-          '${missing > 0 ? ' ($missing senza importo leggibile)' : ''}.$detail';
+          '${missing > 0 ? ' ($missing senza importo: toccalo per scriverlo)' : ''}.$detail';
     case AskIntent.find:
       return hits.length == 1 ? 'Ho trovato 1 documento.' : 'Ho trovato ${hits.length} documenti.';
   }

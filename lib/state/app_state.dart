@@ -9,6 +9,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/ai.dart';
+import '../core/amounts.dart';
 import '../core/archive.dart';
 import '../core/assistant.dart';
 import '../core/learner.dart';
@@ -136,6 +137,13 @@ class AppState extends ChangeNotifier {
       }
       await storage.saveArchive(archive);
     }
+    // Importo dei documenti già in archivio (una volta, senza toccarli: non
+    // serve ricaricarli su Drive, ogni telefono lo legge da sé).
+    var amounts = 0;
+    for (final d in archive.activeDocuments) {
+      if (d.amount == null && !d.amountEdited && fillAmount(d)) amounts++;
+    }
+    if (amounts > 0) await storage.saveArchive(archive);
     await storage.clearTmp();
     ready = true;
     notifyListeners();
@@ -561,6 +569,7 @@ class AppState extends ChangeNotifier {
     applyKindCategory(archive, doc);
     _guessCorrespondent(doc);
     if (ai != null) applyAiResult(archive, doc, ai, retitle: false);
+    fillAmount(doc, ai: ai?.amount);
     final title = autoTitle(archive, doc);
     if (title != null) doc.title = title;
     if (ai?.title != null && aiMayRetitle(archive, doc)) doc.title = ai!.title!;
@@ -692,6 +701,16 @@ class AppState extends ChangeNotifier {
   /// La versione archiviata (PDF/A), se esiste.
   Future<File?> ensureArchive(Document d) async =>
       d.hasArchive ? _ensure(d.archiveFileName) : null;
+
+  /// Importo scritto a mano (null = nessun importo).
+  void setAmount(Document d, double? v) {
+    final before = d.toJson();
+    d
+      ..amount = v
+      ..amountEdited = true;
+    logChanges(archive, before, d, via: 'Importo scritto a mano');
+    saveDocument(d);
+  }
 
   void saveDocument(Document d) {
     d.touch();
@@ -911,6 +930,7 @@ class AppState extends ChangeNotifier {
       if (r == null) return null;
       final before = d.toJson();
       final fields = applyAiResult(archive, d, r, retitle: false);
+      if (fillAmount(d, ai: r.amount)) fields.add('importo');
       if (applyPeople(archive, d, aiPerson: r.person, aiSpecialty: r.specialty, aiHealthKind: r.healthKind)) {
         fields.add('persona');
       }

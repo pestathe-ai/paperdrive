@@ -299,6 +299,8 @@ class Document with Syncable {
     this.titleEdited = false,
     this.suggestedPathId,
     this.pinnedFolder,
+    this.amount,
+    this.amountEdited = false,
     List<HistoryEntry>? history,
     int? modified,
     this.deleted = false,
@@ -395,6 +397,12 @@ class Document with Syncable {
   /// Titolo scelto a mano dall'utente: l'app impara come rinominare i simili.
   bool titleEdited;
 
+  /// Importo speso in euro (letto dall'app o dall'AI, correggibile).
+  double? amount;
+
+  /// Importo scritto (o tolto) a mano: l'app non lo cambia più.
+  bool amountEdited;
+
   String get fileName => fileRev == 0 ? '$id.pdf' : '$id.v$fileRev.pdf';
 
   bool get hasArchive => archiveRev > 0;
@@ -444,6 +452,8 @@ class Document with Syncable {
         if (suggestedPathId != null) 'sp': suggestedPathId,
         if (pinnedFolder != null && pinnedFolder!.isNotEmpty) 'pf': pinnedFolder,
         if (titleEdited) 'te': true,
+        if (amount != null) 'am': amount,
+        if (amountEdited) 'ame': true,
         if (history.isNotEmpty) 'hist': history.map((h) => h.toJson()).toList(),
         'mod': modified,
         if (deleted) 'del': true,
@@ -484,6 +494,8 @@ class Document with Syncable {
         suggestedPathId: j['sp'] as String?,
         pinnedFolder: (j['pf'] as List?)?.map((e) => '$e').toList(),
         titleEdited: j['te'] as bool? ?? false,
+        amount: (j['am'] as num?)?.toDouble(),
+        amountEdited: j['ame'] as bool? ?? false,
         history: ((j['hist'] as List?) ?? const [])
             .map((h) => HistoryEntry.fromJson((h as Map).cast<String, dynamic>()))
             .toList(),
