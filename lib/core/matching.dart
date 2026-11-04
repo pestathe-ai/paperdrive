@@ -1,4 +1,4 @@
-/// Motore di D. Paper Lab: decide tag, mittente, categoria e cartella di un
+/// Motore di D. PaperLink Lab: decide tag, mittente, categoria e cartella di un
 /// documento combinando tre fonti, in quest'ordine di fiducia:
 ///
 /// 1. le regole a parole chiave scritte dall'utente;
@@ -10,7 +10,7 @@
 /// "Espressione regolare" e "Tollerante" (accetta parole scritte male
 /// dall'OCR: una lettera sbagliata ogni quattro circa).
 ///
-/// Progetto originale di D. Paper Lab (vedi DESIGN.md).
+/// Progetto originale di D. PaperLink Lab (vedi DESIGN.md).
 library;
 
 import 'dart:math';

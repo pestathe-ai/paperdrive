@@ -383,7 +383,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               borderRadius: BorderRadius.circular(8),
               child: Image.asset('assets/logo.png', width: 36, height: 36),
             ),
-            title: const Text('D. Paper Lab'),
+            title: const Text('D. PaperLink Lab'),
             subtitle: Text(
               'un\'app Dom Studio\n'
               '${app.archive.activeDocuments.length} documenti · '

@@ -1,0 +1,32 @@
+name: Probe
+on:
+  push:
+    branches: [probe]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - name: Model files
+        run: |
+          for u in \
+            https://huggingface.co/tibaf/embeddinggemma/resolve/main/embeddinggemma-300M_seq256_mixed-precision.tflite \
+            https://huggingface.co/tibaf/embeddinggemma/resolve/main/sentencepiece_for_embeddinggemma.model \
+            https://huggingface.co/litert-community/embeddinggemma-300m/resolve/main/sentencepiece.model \
+            https://huggingface.co/kontextdev/embeddinggemma-300m-litertlm/resolve/main/models/embeddinggemma-300m.litertlm ; do
+            echo "== $u"; curl -sIL "$u" | grep -iE '^HTTP|content-length' ; done
+          curl -s https://huggingface.co/api/models/tibaf/embeddinggemma | head -c 1500; echo
+      - name: API
+        run: |
+          mkdir p && cd p && flutter create -q --platforms android x && cd x
+          flutter pub add flutter_edge_ai flutter_edge_ai_litertlm flutter_edge_ai_embeddings >/dev/null
+          grep -A3 "flutter_edge_ai" pubspec.lock | grep -E "name|version" 
+          C=$(dirname $(flutter pub deps --json >/dev/null; find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name 'flutter_edge_ai_embeddings-*' | head -1))
+          for pkg in flutter_edge_ai_embeddings flutter_edge_ai flutter_edge_ai_litertlm; do
+            d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "$pkg-*" | sort | tail -1); echo "##### $d"
+            grep -rn -E "installEmbedder|class .*Embed|getActiveEmbedder|Future<.*> embed|enum TaskType|TaskType\.|modelFromNetwork|tokenizerFromNetwork|EmbeddingInput\.|hasActiveEmbedder|uninstallEmbedder|withProgress|embedBatch|class Embedding|List<double>" $d/lib | grep -v "^\s*//" | head -80
+          done
+          d=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name "flutter_edge_ai_embeddings-*" | sort | tail -1)
+          sed -n 1,200p $d/README.md

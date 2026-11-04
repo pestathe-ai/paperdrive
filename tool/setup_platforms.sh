@@ -9,7 +9,7 @@ rm -f test/widget_test.dart
 MANIFEST=android/app/src/main/AndroidManifest.xml
 grep -q 'android.permission.INTERNET' "$MANIFEST" || \
   sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$MANIFEST"
-sed -i 's#android:label="paperdrive"#android:label="D. Paper Lab"#' "$MANIFEST"
+sed -i 's#android:label="paperdrive"#android:label="D. PaperLink Lab"#' "$MANIFEST"
 
 # Icona Dom Studio (adattiva, con versione a tema per Android 13+).
 cp -r tool/android/res/. android/app/src/main/res/

@@ -1,4 +1,4 @@
-# D. Paper Lab — come decide dove va un documento
+# D. PaperLink Lab — come decide dove va un documento
 
 Documento di progetto del motore di catalogazione (versione 0.19). Descrive
 le scelte fatte e perché. Il codice è in `lib/core/`.

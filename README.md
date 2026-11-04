@@ -1,4 +1,4 @@
-# D. Paper Lab
+# D. PaperLink Lab
 
 *un'app Dom Studio* (nome interno del progetto: Paperdrive).
 
@@ -54,7 +54,7 @@ successivi vengono classificati e rinominati allo stesso modo.
 
 ### Motore di catalogazione (v0.19)
 
-Progettato da zero per D. Paper Lab (dettagli in [DESIGN.md](DESIGN.md)):
+Progettato da zero per D. PaperLink Lab (dettagli in [DESIGN.md](DESIGN.md)):
 - **Regole a parole chiave** sulle parole del testo: Una qualsiasi parola, Tutte le parole, Frase esatta, Espressione regolare e **Tollerante** (accetta parole con errori dell'OCR).
 - **Apprendimento per esempi**: per un documento nuovo guarda i documenti già sistemati più simili e usa la risposta su cui sono d'accordo. Funziona già con pochi esempi, ogni correzione conta subito, e si sa sempre su quali documenti si è basato.
 - **Ordine di fiducia**: regole tue > ciò che ha imparato (se è sicuro) > regole predefinite > AI sul telefono per i casi liberi.

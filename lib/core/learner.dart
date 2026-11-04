@@ -7,7 +7,7 @@
 /// pochi esempi, ogni correzione conta subito e si può sempre dire perché
 /// ha deciso così (i documenti simili che ha guardato).
 ///
-/// Progetto originale di D. Paper Lab (vedi DESIGN.md).
+/// Progetto originale di D. PaperLink Lab (vedi DESIGN.md).
 library;
 
 import 'archive.dart';
