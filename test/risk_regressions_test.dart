@@ -182,4 +182,19 @@ void main() {
       expect(ranked.first.$1.name, contains('Box'));
     });
   });
+
+  test('una cartella spostata su Drive: il percorso vecchio rimasto vuoto si toglie', () {
+    final a = Archive.starter();
+    final old = StoragePath(name: 'Lavori condominiali / Box', template: 'Casa/Lavori condominiali/{created_year}/Box/{title} {data}', learned: true);
+    final mine = StoragePath(name: 'Mio', template: 'Casa/Mio/{title} {data}', learned: false);
+    a.storagePaths[old.id] = old;
+    a.storagePaths[mine.id] = mine;
+    final d = Document(title: 'x', content: 'box', typeId: 'st-casa', created: DateTime(2026), userEdited: true);
+    a.documents[d.id] = d;
+    applyFolderCorrection(a, d, folders: ['Casa', 'Via alessandrina', '2026', 'Lavori condominiali', 'Box']);
+    expect(retireEmptyLearnedPaths(a), 1);
+    expect(old.deleted, isTrue);
+    expect(mine.deleted, isFalse);
+    expect(a.storagePath(d.storagePathId)!.template, 'Casa/Via alessandrina/{created_year}/Lavori condominiali/Box/{title} {data}');
+  });
 }

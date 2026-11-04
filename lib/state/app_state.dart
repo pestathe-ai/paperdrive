@@ -143,6 +143,7 @@ class AppState extends ChangeNotifier {
     for (final d in archive.activeDocuments) {
       if (d.amount == null && !d.amountEdited && fillAmount(d)) amounts++;
     }
+    if (retireEmptyLearnedPaths(archive) > 0) amounts++;
     if (amounts > 0) await storage.saveArchive(archive);
     await storage.clearTmp(all: true);
     ready = true;
@@ -1486,7 +1487,11 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }
       searchIndex.clear();
-      if (out.learned > 0) _scheduleTraining();
+      if (out.learned > 0) {
+        _scheduleTraining();
+        // Cartelle spostate su Drive: i percorsi vecchi rimasti vuoti si tolgono.
+        if (retireEmptyLearnedPaths(archive) > 0) changed(entities: true);
+      }
       onDrive = out.remoteNames;
       await storage.saveOnDrive(onDrive);
       // Una volta alla settimana (e subito dopo l'aggiornamento): unisce le

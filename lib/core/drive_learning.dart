@@ -219,6 +219,27 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
   return changed;
 }
 
+/// Toglie le sottocartelle imparate rimaste senza documenti: succede
+/// quando sposti su Drive un'intera cartella (es. "Lavori condominiali"
+/// dentro "Via alessandrina"). Il vecchio percorso non deve più attirare i
+/// documenti nuovi e ricreare la cartella vecchia. Restituisce quante.
+int retireEmptyLearnedPaths(Archive a) {
+  final used = <String>{
+    for (final d in a.documents.values)
+      if (!d.deleted) ...[?d.storagePathId, ?d.suggestedPathId, ...?d.suggestedPaths],
+  };
+  var n = 0;
+  for (final p in a.storagePaths.values) {
+    if (p.deleted || p.id == healthPathId || p.learned == false || !isLearnedPath(p)) continue;
+    if (used.contains(p.id)) continue;
+    p
+      ..deleted = true
+      ..modified = nowMs();
+    n++;
+  }
+  return n;
+}
+
 /// La cartella attuale del documento, da mostrare e modificare
 /// (es. "Casa/Box via Roma/2026").
 String folderOf(Archive a, Document d) => drivePath(a, d).$1.join('/');
