@@ -445,6 +445,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               app.saveSettings();
             },
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.auto_delete_outlined),
+            title: const Text('Elimina l\'originale dal telefono'),
+            subtitle: const Text('Dopo che il documento è arrivato su Drive, il file che avevi importato '
+                '(es. nella cartella Download) viene eliminato. Vale per i file scelti con "Aggiungi" e, '
+                'quando Android lo permette, per quelli condivisi da altre app.'),
+            value: s.deleteOriginals,
+            onChanged: !s.driveEnabled
+                ? null
+                : (v) {
+                    s.deleteOriginals = v;
+                    app.saveSettings();
+                  },
+          ),
           if (s.driveEnabled && !app.readOnly)
             ListTile(
               leading: const Icon(Icons.account_tree_outlined),

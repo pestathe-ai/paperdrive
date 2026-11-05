@@ -42,6 +42,9 @@ class Settings {
   /// Somiglianza per significato (rete neurale EmbeddingGemma) installata e attiva.
   bool meaningEnabled = false;
 
+  /// Dopo l'archiviazione su Drive elimina il file originale dal telefono.
+  bool deleteOriginals = false;
+
   /// Cartella Drive dell'archivio (la mia o una condivisa con me).
   String? driveFolderId;
   String? driveFolderOwner;
@@ -68,6 +71,7 @@ class Settings {
         'lastErr': lastSyncError,
         'aiModel': aiModel,
         'meaning': meaningEnabled,
+        'delOrig': deleteOriginals,
         'ai': aiEnabled,
         'autoImport': autoImport,
         'keepLocal': keepFilesLocal,
@@ -92,6 +96,7 @@ class Settings {
     ..lastSyncError = j['lastErr'] as String?
     ..aiModel = j['aiModel'] as String?
     ..meaningEnabled = j['meaning'] as bool? ?? false
+    ..deleteOriginals = j['delOrig'] as bool? ?? false
     ..aiEnabled = j['ai'] as bool? ?? false
     ..autoImport = j['autoImport'] as bool? ?? false
     ..keepFilesLocal = j['keepLocal'] as bool? ?? false
@@ -123,6 +128,20 @@ class Storage {
   File get _mailFile => File(p.join(root.path, 'mail.json'));
   File get _onDriveFile => File(p.join(root.path, 'ondrive.json'));
   File get _meaningFile => File(p.join(root.path, 'meanings.json'));
+  File get _originalsFile => File(p.join(root.path, 'originals.json'));
+
+  /// File originali da eliminare dopo l'archiviazione: indirizzo → documenti.
+  Future<Map<String, List<String>>> loadOriginals() async {
+    try {
+      if (await _originalsFile.exists()) {
+        final j = (jsonDecode(await _originalsFile.readAsString()) as Map).cast<String, dynamic>();
+        return {for (final e in j.entries) e.key: (e.value as List).map((x) => '$x').toList()};
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  Future<void> saveOriginals(Map<String, List<String>> m) => _writeAtomic(_originalsFile, jsonEncode(m));
 
   /// Vettori della rete neurale per documento (solo sul telefono).
   Future<MeaningStore> loadMeanings() async {

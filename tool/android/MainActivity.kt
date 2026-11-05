@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -20,6 +21,8 @@ import java.io.FileOutputStream
 class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
     private val pending = mutableListOf<Map<String, String>>()
+    private var pickResult: MethodChannel.Result? = null
+    private val pickRequest = 4711
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -30,6 +33,55 @@ class MainActivity : FlutterActivity() {
                     val out = ArrayList<Map<String, String>>(pending)
                     pending.clear()
                     result.success(out)
+                }
+                // Scelta dei file con il selettore di Android: si tiene il
+                // permesso di modificarli, così dopo l'archiviazione si può
+                // eliminare l'originale (es. dalla cartella Download).
+                "pickDocuments" -> {
+                    if (pickResult != null) {
+                        result.error("busy", "selezione già in corso", null)
+                    } else {
+                        pickResult = result
+                        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "*/*"
+                            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                        }
+                        try {
+                            startActivityForResult(i, pickRequest)
+                        } catch (e: Exception) {
+                            pickResult = null
+                            result.error("picker", e.message, null)
+                        }
+                    }
+                }
+                // Elimina il file originale (dopo che il documento è su Drive).
+                "deleteOriginal" -> {
+                    val u = call.argument<String>("uri")
+                    if (u == null) {
+                        result.success(false)
+                    } else {
+                        val uri = Uri.parse(u)
+                        var ok = false
+                        try {
+                            ok = DocumentsContract.deleteDocument(contentResolver, uri)
+                        } catch (_: Exception) {
+                        }
+                        if (!ok) {
+                            try {
+                                ok = contentResolver.delete(uri, null, null) > 0
+                            } catch (_: Exception) {
+                            }
+                        }
+                        try {
+                            contentResolver.releasePersistableUriPermission(
+                                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                        } catch (_: Exception) {
+                        }
+                        result.success(ok)
+                    }
                 }
                 // Immagini che Flutter non legge (HEIC, AVIF, GIF, BMP, WEBP) → JPEG.
                 "toJpeg" -> {
@@ -58,6 +110,37 @@ class MainActivity : FlutterActivity() {
         }
         channel = ch
         handle(intent)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != pickRequest) return
+        val res = pickResult ?: return
+        pickResult = null
+        if (resultCode != RESULT_OK || data == null) {
+            res.success(ArrayList<Map<String, String>>())
+            return
+        }
+        val uris = mutableListOf<Uri>()
+        data.clipData?.let { clip -> for (k in 0 until clip.itemCount) uris.add(clip.getItemAt(k).uri) }
+        if (uris.isEmpty()) data.data?.let { uris.add(it) }
+        Thread {
+            val out = ArrayList<Map<String, String>>()
+            for (u in uris) {
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        u, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                } catch (_: Exception) {
+                    try {
+                        contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    } catch (_: Exception) {
+                    }
+                }
+                copy(u, null)?.let { out.add(it) }
+            }
+            runOnUiThread { res.success(out) }
+        }.start()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -144,7 +227,7 @@ class MainActivity : FlutterActivity() {
             val out = File(dir, System.currentTimeMillis().toString() + "_" + name.replace('/', '_'))
             val input = contentResolver.openInputStream(uri) ?: return null
             input.use { inp -> out.outputStream().use { inp.copyTo(it) } }
-            mapOf("path" to out.absolutePath, "name" to name)
+            mapOf("path" to out.absolutePath, "name" to name, "uri" to uri.toString())
         } catch (e: Exception) {
             null
         }

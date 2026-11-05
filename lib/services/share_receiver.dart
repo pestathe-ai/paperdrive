@@ -5,8 +5,8 @@ import 'package:flutter/services.dart';
 class ShareReceiver {
   ShareReceiver(this.onFiles);
 
-  /// Riceve coppie (percorso, nome del file).
-  final Future<void> Function(List<(String, String)>) onFiles;
+  /// Riceve (percorso della copia, nome del file, indirizzo dell'originale).
+  final Future<void> Function(List<(String, String, String?)>) onFiles;
 
   static const MethodChannel _channel = MethodChannel('paperdrive/share');
   bool _busy = false;
@@ -29,7 +29,7 @@ class ShareReceiver {
         if (raw == null || raw.isEmpty) break;
         final files = [
           for (final m in raw)
-            if (m['path'] != null) ('${m['path']}', '${m['name'] ?? 'documento.pdf'}'),
+            if (m['path'] != null) ('${m['path']}', '${m['name'] ?? 'documento.pdf'}', m['uri'] as String?),
         ];
         await onFiles(files);
       }

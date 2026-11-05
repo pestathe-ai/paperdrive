@@ -34,6 +34,7 @@ import '../services/drive_sync.dart';
 import '../services/ingest.dart';
 import '../services/mail_import.dart';
 import '../services/meaning_service.dart';
+import '../services/originals.dart';
 import '../services/storage.dart';
 
 /// Esito dell'importazione di un singolo file.
@@ -321,6 +322,13 @@ class AppState extends ChangeNotifier {
 
   /// Importa PDF o immagini dal telefono (anche da Drive o altre app).
   Future<List<String>> importFiles() async {
+    // Selettore di Android: si tiene il permesso sull'originale, così dopo
+    // l'archiviazione lo si può eliminare (se attivato).
+    final native = await Originals.pick();
+    if (native != null) {
+      if (native.isEmpty) return const [];
+      return _importCopies(native, source: DocSource.file);
+    }
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: pickerExtensions,
@@ -1353,10 +1361,10 @@ class AppState extends ChangeNotifier {
   // Condividi verso l'app
 
   /// File ricevuti da "Condividi" o "Apri con": li archivia subito.
-  Future<List<String>> importShared(List<(String, String)> files) async {
+  Future<List<String>> importShared(List<(String, String, String?)> files) async {
     if (files.isEmpty) return const [];
     if (readOnly) {
-      for (final (path, _) in files) {
+      for (final (path, _, _) in files) {
         try {
           await File(path).delete();
         } catch (_) {}
@@ -1365,20 +1373,66 @@ class AppState extends ChangeNotifier {
       shareResults.value = msg;
       return msg;
     }
-    final staged = <StagedInput>[];
-    for (final (path, name) in files) {
-      try {
-        final bytes = await File(path).readAsBytes();
-        staged.addAll(await _stage(name, bytes, source: DocSource.share));
-      } catch (_) {}
-      try {
-        await File(path).delete();
-      } catch (_) {}
-    }
-    final messages = await _ingestAll(staged);
+    final messages = await _importCopies(files, source: DocSource.share);
     shareResults.value = messages;
     if (settings.driveEnabled) unawaited(syncNow(silent: true));
     return messages;
+  }
+
+  /// Importa file copiati nella cache (dal selettore o da "Condividi"), uno
+  /// alla volta, e ricorda da quale originale viene ogni documento: se
+  /// attivato, l'originale si elimina quando il documento è su Drive.
+  Future<List<String>> _importCopies(List<(String, String, String?)> files, {required DocSource source}) async {
+    final messages = <String>[];
+    final originals = settings.deleteOriginals ? await storage.loadOriginals() : <String, List<String>>{};
+    for (final (path, name, uri) in files) {
+      try {
+        final bytes = await File(path).readAsBytes();
+        final before = archive.documents.keys.toSet();
+        final staged = await _stage(name, bytes, source: source);
+        messages.addAll(await _ingestAll(staged));
+        if (uri != null && settings.deleteOriginals) {
+          final ids = archive.documents.keys.where((k) => !before.contains(k)).toList();
+          // Già in archivio (duplicato): conta il documento che c'era.
+          if (ids.isEmpty) {
+            final dup = archive.duplicateOf(Ingestor.checksumOf(bytes));
+            if (dup != null) ids.add(dup.id);
+          }
+          if (ids.isNotEmpty) originals[uri] = ids;
+        }
+      } catch (e) {
+        messages.add('$name: $e');
+      } finally {
+        try {
+          await File(path).delete();
+        } catch (_) {}
+      }
+    }
+    if (settings.deleteOriginals) await storage.saveOriginals(originals);
+    return messages;
+  }
+
+  /// Elimina gli originali dei documenti già arrivati su Drive. Restituisce
+  /// quanti ne ha eliminati.
+  Future<int> _deleteOriginals() async {
+    if (!settings.deleteOriginals) return 0;
+    final originals = await storage.loadOriginals();
+    if (originals.isEmpty) return 0;
+    var n = 0;
+    final done = <String>[];
+    for (final e in originals.entries) {
+      final docs = [for (final id in e.value) archive.documents[id]];
+      // Tutti i documenti di quel file devono essere su Drive.
+      final ready = docs.every((d) => d == null || d.deleted || onDrive.contains(d.primaryFile));
+      if (!ready) continue;
+      if (await Originals.delete(e.key)) n++;
+      done.add(e.key);
+    }
+    for (final k in done) {
+      originals.remove(k);
+    }
+    await storage.saveOriginals(originals);
+    return n;
   }
 
   /// Esegue un flusso su documenti già in archivio. Restituisce quanti cambiano.
@@ -1558,6 +1612,10 @@ class AppState extends ChangeNotifier {
       }
       onDrive = out.remoteNames;
       await storage.saveOnDrive(onDrive);
+      // Originali sul telefono (es. Download) dei documenti ormai su Drive.
+      try {
+        await _deleteOriginals();
+      } catch (_) {}
       // Una volta alla settimana (e subito dopo l'aggiornamento): unisce le
       // cartelle doppie e toglie quelle vuote.
       if (out.canEdit &&
