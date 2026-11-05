@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../core/drive_learning.dart' show folderOf;
 import '../core/models.dart';
 import '../core/organize.dart' show drivePath;
+import '../core/text_utils.dart' show folderKey;
 import '../state/app_state.dart';
 import 'widgets.dart';
 
@@ -83,25 +84,32 @@ class _FolderPickerState extends State<FolderPicker> {
     final theme = Theme.of(context);
     // Le sottocartelle che esistono qui: quelle dei documenti, più quelle
     // appena create.
+    // Cartelle uguali a parte maiuscole/accenti sono la stessa (come su
+    // Drive): si mostra il nome più usato.
     final sub = <String, int>{};
+    final spellings = <String, Map<String, int>>{};
+    void add(String name, int n) {
+      final k = folderKey(name);
+      sub.update(k, (x) => x + n, ifAbsent: () => n);
+      spellings.putIfAbsent(k, () => {}).update(name, (x) => x + n + 1, ifAbsent: () => n + 1);
+    }
+
+    bool under(List<String> f) {
+      for (var i = 0; i < path.length; i++) {
+        if (folderKey(f[i]) != folderKey(path[i])) return false;
+      }
+      return true;
+    }
+
     for (final d in a.activeDocuments) {
       final (f, _) = drivePath(a, d);
-      if (f.length <= path.length) continue;
-      var match = true;
-      for (var i = 0; i < path.length; i++) {
-        if (f[i].toLowerCase() != path[i].toLowerCase()) {
-          match = false;
-          break;
-        }
-      }
-      if (match) sub.update(f[path.length], (n) => n + 1, ifAbsent: () => 1);
+      if (f.length > path.length && under(f)) add(f[path.length], 1);
     }
     for (final c in _created) {
       final f = c.split('/');
-      if (f.length == path.length + 1 && f.take(path.length).join('/') == path.join('/')) {
-        sub.putIfAbsent(f.last, () => 0);
-      }
+      if (f.length == path.length + 1 && under(f)) add(f.last, 0);
     }
+    String label(String k) => spellings[k]!.entries.reduce((x, y) => x.value >= y.value ? x : y).key;
     final names = sub.keys.toList();
     final dated = RegExp(r'^\d');
     names.sort((x, y) {
@@ -163,10 +171,10 @@ class _FolderPickerState extends State<FolderPicker> {
                 ListTile(
                   leading: Icon(dated.hasMatch(n) ? Icons.folder_outlined : Icons.folder,
                       color: dated.hasMatch(n) ? null : brandBlue),
-                  title: Text(n, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  title: Text(label(n), style: const TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: sub[n] == 0 ? const Text('nuova') : null,
                   trailing: sub[n] == 0 ? null : Text('${sub[n]}', style: theme.textTheme.labelLarge),
-                  onTap: () => _open([...path, n]),
+                  onTap: () => _open([...path, label(n)]),
                 ),
               ListTile(
                 leading: const Icon(Icons.create_new_folder_outlined),

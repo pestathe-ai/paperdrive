@@ -247,7 +247,17 @@ int fixPersonInPaths(Archive a) {
       }
     }
     if (counts.isEmpty) continue;
-    final who = counts.entries.reduce((x, y) => x.value >= y.value ? x : y).key;
+    var who = counts.entries.reduce((x, y) => x.value >= y.value ? x : y).key;
+    // Il nome come è scritto nella tua cartella su Drive ("Via alessandrina").
+    for (final d in a.activeDocuments) {
+      final pf = d.pinnedFolder;
+      if (d.storagePathId != p.id || pf == null) continue;
+      final same = pf.where((f) => normalize(f) == normalize(who)).firstOrNull;
+      if (same != null) {
+        who = same;
+        break;
+      }
+    }
     segs[i] = who;
     p
       ..template = segs.join('/')

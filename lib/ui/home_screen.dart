@@ -4,6 +4,7 @@ import '../core/assistant.dart' show DocQuestion;
 import '../core/models.dart';
 import '../core/organize.dart' show drivePath;
 import '../core/search.dart' show snippet;
+import '../core/text_utils.dart' show folderKey;
 import '../state/app_state.dart';
 import 'ask_screen.dart';
 import 'document_screen.dart';
@@ -652,14 +653,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _archive(AppState app) {
     final a = app.archive;
+    // Le cartelle si confrontano come su Drive: "Via Alessandrina" e "Via
+    // alessandrina" sono la stessa (si mostra il nome più usato).
     final subfolders = <String, int>{};
+    final spellings = <String, Map<String, int>>{};
     final here = <Document>[];
     for (final d in a.activeDocuments) {
       final (f, _) = drivePath(a, d);
       if (f.length < folder.length) continue;
       var match = true;
       for (var i = 0; i < folder.length; i++) {
-        if (f[i] != folder[i]) {
+        if (folderKey(f[i]) != folderKey(folder[i])) {
           match = false;
           break;
         }
@@ -668,9 +672,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (f.length == folder.length) {
         here.add(d);
       } else {
-        subfolders.update(f[folder.length], (n) => n + 1, ifAbsent: () => 1);
+        final k = folderKey(f[folder.length]);
+        subfolders.update(k, (n) => n + 1, ifAbsent: () => 1);
+        spellings.putIfAbsent(k, () => {}).update(f[folder.length], (n) => n + 1, ifAbsent: () => 1);
       }
     }
+    String label(String k) => spellings[k]!.entries.reduce((x, y) => x.value >= y.value ? x : y).key;
     final names = subfolders.keys.toList();
     // Anni e mesi dal più recente; il resto in ordine alfabetico.
     final dated = RegExp(r'^\d');
@@ -726,9 +733,9 @@ class _HomeScreenState extends State<HomeScreen> {
               dated.hasMatch(n) ? Icons.folder_outlined : Icons.folder,
               color: dated.hasMatch(n) ? null : brandBlue,
             ),
-            title: Text(n, style: const TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(label(n), style: const TextStyle(fontWeight: FontWeight.w600)),
             trailing: Text('${subfolders[n]}', style: theme.textTheme.labelLarge),
-            onTap: () => _openFolder([...folder, n]),
+            onTap: () => _openFolder([...folder, label(n)]),
           ),
         if (names.isNotEmpty && here.isNotEmpty) const Divider(height: 1),
         for (final d in here) _docTile(app, d),

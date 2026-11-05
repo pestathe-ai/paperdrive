@@ -60,3 +60,7 @@ String cleanContent(String s) {
   t = t.split('\n').map((l) => l.trimRight()).join('\n');
   return t.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 }
+
+/// Nome di cartella confrontabile: senza accenti, maiuscole e spazi in più
+/// ("Via Alessandrina " = "via alessandrina"), come lo cerca Google Drive.
+String folderKey(String s) => normalize(s).replaceAll(RegExp(r'\s+'), ' ').trim();
