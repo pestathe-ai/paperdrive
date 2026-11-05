@@ -143,6 +143,7 @@ class AppState extends ChangeNotifier {
     for (final d in archive.activeDocuments) {
       if (d.amount == null && !d.amountEdited && fillAmount(d)) amounts++;
     }
+    if (fixPersonInPaths(archive) > 0) amounts++;
     if (retireEmptyLearnedPaths(archive) > 0) amounts++;
     if (amounts > 0) await storage.saveArchive(archive);
     await storage.clearTmp(all: true);

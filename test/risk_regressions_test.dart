@@ -197,4 +197,37 @@ void main() {
     expect(mine.deleted, isFalse);
     expect(a.storagePath(d.storagePathId)!.template, 'Casa/Via alessandrina/{created_year}/Lavori condominiali/Box/{title} {data}');
   });
+
+  group('"Via Alessandrina" tra le persone', () {
+    Archive archive() {
+      final a = Archive.starter();
+      a.config.people.add(Person(name: 'Via Alessandrina'));
+      ensurePeopleEntities(a);
+      return a;
+    }
+
+    test('spostando in Casa/Via alessandrina/… la cartella resta nel percorso', () {
+      final a = archive();
+      final d = Document(title: 'Ripartizione spese', content: 'ripartizione spese box', typeId: 'st-casa', created: DateTime(2026, 7, 29));
+      a.documents[d.id] = d;
+      applyFolderCorrection(a, d, folders: ['Casa', 'Via alessandrina', 'Lavori condominiali', '2026', 'Box']);
+      final other = Document(title: 'Altro', content: 'x', typeId: 'st-casa', created: DateTime(2026, 8, 1))
+        ..storagePathId = d.storagePathId
+        ..customFields[personFieldId] = 'Via Alessandrina';
+      expect(drivePath(a, other).$1, ['Casa', 'Via alessandrina', 'Lavori condominiali', '2026', 'Box']);
+    });
+
+    test('i percorsi vecchi con {persona} si correggono', () {
+      final a = archive();
+      final p = StoragePath(name: 'Lavori condominiali / Box', template: 'Casa/{persona}/Lavori condominiali/{created_year}/Box/{title} {data}', learned: true);
+      a.storagePaths[p.id] = p;
+      final d = Document(title: 'Ripartizione', typeId: 'st-casa', created: DateTime(2026, 7, 29))
+        ..storagePathId = p.id
+        ..customFields[personFieldId] = 'Via Alessandrina';
+      a.documents[d.id] = d;
+      expect(drivePath(a, d).$1, ['Casa', 'Lavori condominiali', '2026', 'Box']);
+      expect(fixPersonInPaths(a), 1);
+      expect(drivePath(a, d).$1, ['Casa', 'Via Alessandrina', 'Lavori condominiali', '2026', 'Box']);
+    });
+  });
 }

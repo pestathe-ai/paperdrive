@@ -161,7 +161,16 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
         final p = personOf(s);
         if (p != null) {
           person = p.name;
-          template.add('{persona}');
+          // Dopo la categoria, o in una categoria di tutta la casa (dove la
+          // persona non compare nel percorso), il nome resta scritto per
+          // esteso: "Casa/Via alessandrina/…" deve restare così.
+          final shared = a.config.sharedTypeIds.contains(d.typeId);
+          if (shared || (catIdx >= 0 && i > catIdx)) {
+            template.add(s);
+            custom.add(s);
+          } else {
+            template.add('{persona}');
+          }
           continue;
         }
         if (d.typeId == healthTypeId) {
@@ -217,6 +226,35 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
   }
   if (changed.isNotEmpty) d.userEdited = true;
   return changed;
+}
+
+/// Percorsi imparati delle versioni precedenti con "{persona}" dopo la
+/// categoria (es. "Casa/{persona}/…" quando "Via Alessandrina" è tra le
+/// persone): nelle categorie di tutta la casa la persona non compare nel
+/// percorso, quindi la cartella spariva e i file finivano in "Casa/…".
+/// Ora il nome si scrive per esteso, preso dai documenti di quel percorso.
+int fixPersonInPaths(Archive a) {
+  var n = 0;
+  for (final p in a.storagePaths.values) {
+    if (p.deleted || p.id == healthPathId || !isLearnedPath(p)) continue;
+    final segs = p.template.split('/');
+    final i = segs.indexOf('{persona}');
+    if (i <= 0) continue;
+    final counts = <String, int>{};
+    for (final d in a.activeDocuments) {
+      final who = d.customFields[personFieldId] ?? '';
+      if (d.storagePathId == p.id && who.isNotEmpty) counts[who] = (counts[who] ?? 0) + 1;
+    }
+    if (counts.isEmpty) continue;
+    final who = counts.entries.reduce((x, y) => x.value >= y.value ? x : y).key;
+    segs[i] = who;
+    p
+      ..template = segs.join('/')
+      ..name = p.name.isEmpty ? who : (p.name.contains(who) ? p.name : '$who / ${p.name}')
+      ..modified = nowMs();
+    n++;
+  }
+  return n;
 }
 
 /// Toglie le sottocartelle imparate rimaste senza documenti: succede
