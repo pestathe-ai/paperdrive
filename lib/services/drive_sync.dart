@@ -377,6 +377,28 @@ class DriveSync {
     return created.id!;
   }
 
+  /// Toglie [id] se è vuota, poi prova con la cartella che la contiene.
+  Future<void> _trashIfEmptyUp(drive.DriveApi api, String id, String root) async {
+    var cur = id;
+    for (var depth = 0; depth < 12 && cur != root; depth++) {
+      final f = await api.files.get(cur, $fields: 'id,parents,trashed,mimeType') as drive.File;
+      if (f.trashed == true || f.mimeType != folderMime) return;
+      final inside = await api.files.list(
+        q: "'${_q(cur)}' in parents and trashed = false",
+        spaces: 'drive',
+        pageSize: 1,
+        $fields: 'files(id)',
+      );
+      if ((inside.files ?? const []).isNotEmpty) return;
+      final up = (f.parents ?? const []).firstOrNull;
+      // Solo dentro l'archivio.
+      if (up == null || !await _insideRoot(api, up, root)) return;
+      await api.files.update(drive.File()..trashed = true, cur, $fields: 'id');
+      _folders.removeWhere((_, v) => v == cur);
+      cur = up;
+    }
+  }
+
   /// Mette nel cestino di Drive la cartella [path] dell'archivio, solo se è
   /// vuota (i file dell'app sono già stati spostati; un file tuo la fa
   /// restare). Vero se l'ha tolta.
@@ -790,6 +812,9 @@ class DriveSync {
       }
 
       // Ogni file nella sua cartella (categoria/anno) e con il nome giusto.
+      // Le cartelle da cui l'app toglie un file si ricordano: se restano
+      // vuote vanno nel cestino (es. dopo una correzione fatta nell'app).
+      final leftBehind = <String>{};
       if (canWrite) {
         for (final d in merged.documents.values) {
           if (d.deleted || outside.contains(d.id)) continue;
@@ -814,12 +839,24 @@ class DriveSync {
                 removeParents: moved && r.parents.isNotEmpty ? r.parents.join(',') : null,
                 $fields: 'id',
               );
+              if (moved) leftBehind.addAll(r.parents.where((p) => p != root));
               organized++;
             } on drive.DetailedApiRequestError catch (e) {
               // File di un'altra persona che non posso spostare: resta dov'è.
               if (e.status != 403) rethrow;
             }
           }
+        }
+      }
+
+      // Cartelle rimaste vuote dopo gli spostamenti: nel cestino di Drive,
+      // risalendo finché la cartella sopra è vuota (mai la cartella
+      // principale dell'archivio, mai una cartella con dentro altro).
+      for (final id in leftBehind) {
+        try {
+          await _trashIfEmptyUp(api, id, root);
+        } catch (_) {
+          // Una cartella che non si riesce a controllare resta.
         }
       }
 
