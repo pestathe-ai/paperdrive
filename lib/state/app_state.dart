@@ -700,15 +700,23 @@ class AppState extends ChangeNotifier {
 
   /// Il PDF del documento: l'originale se è sul telefono, altrimenti quello
   /// su Drive (la versione PDF/A, se c'è), scaricato.
+  /// File aperti di recente (si tengono un giorno, per non riscaricarli).
+  final Map<String, DateTime> _opened = {};
+
   Future<File?> ensureFile(Document d) async {
+    _opened[d.fileName] = DateTime.now();
+    _opened[d.primaryFile] = DateTime.now();
     final local = storage.docFile(d.fileName);
     if (await local.exists()) return _ensure(d.fileName, thumbFor: d.id);
     return _ensure(d.primaryFile, thumbFor: d.id);
   }
 
   /// La versione archiviata (PDF/A), se esiste.
-  Future<File?> ensureArchive(Document d) async =>
-      d.hasArchive ? _ensure(d.archiveFileName) : null;
+  Future<File?> ensureArchive(Document d) async {
+    if (!d.hasArchive) return null;
+    _opened[d.archiveFileName] = DateTime.now();
+    return _ensure(d.archiveFileName);
+  }
 
   /// Importo scritto a mano (null = nessun importo).
   void setAmount(Document d, double? v) {
@@ -989,9 +997,12 @@ class AppState extends ChangeNotifier {
 
   /// Toglie dal telefono i PDF già su Drive e non aperti negli ultimi
   /// giorni (resta l'elenco con anteprime e testo).
-  Future<int> _freeSpace({Duration keep = const Duration(days: 3)}) async {
+  /// Toglie dal telefono i PDF che sono già su Drive: appena caricati,
+  /// tranne quelli che hai aperto nelle ultime 24 ore.
+  Future<int> _freeSpace({Duration keep = Duration.zero, bool force = false}) async {
     var n = 0;
     final limit = DateTime.now().subtract(keep);
+    final recent = DateTime.now().subtract(const Duration(days: 1));
     final primaries = <String, String>{
       for (final d in archive.documents.values) d.fileName: d.primaryFile,
     };
@@ -999,6 +1010,8 @@ class AppState extends ChangeNotifier {
       // Si toglie se è su Drive, o se su Drive c'è la sua versione PDF/A.
       final onCloud = onDrive.contains(name) || onDrive.contains(primaries[name] ?? '');
       if (!onCloud) continue; // non ancora caricato: si tiene
+      final opened = _opened[name];
+      if (!force && opened != null && opened.isAfter(recent)) continue;
       final f = storage.docFile(name);
       try {
         if ((await f.lastModified()).isBefore(limit)) {
@@ -1011,7 +1024,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Libera subito lo spazio (tutti i file già su Drive).
-  Future<int> freeSpaceNow() => _freeSpace(keep: Duration.zero);
+  Future<int> freeSpaceNow() => _freeSpace(force: true);
 
   /// Assistente "Chiedi": capisce la domanda (regole + AI sul telefono, se
   /// scaricata), cerca e prepara la risposta.

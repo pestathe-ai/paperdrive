@@ -437,8 +437,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Tieni i file anche sul telefono'),
             subtitle: Text(s.keepFilesLocal
                 ? 'Tutti i PDF sul telefono: si aprono anche senza internet'
-                : 'Sul telefono solo l\'elenco: i PDF stanno su Drive e si scaricano quando li apri '
-                    '(restano qualche giorno). Un file viene tolto solo dopo che è arrivato su Drive.'),
+                : 'Sul telefono solo l\'elenco: appena un PDF è arrivato su Drive viene tolto dal telefono. '
+                    'Quando lo apri si scarica e resta un giorno.'),
             value: s.keepFilesLocal,
             onChanged: (v) {
               s.keepFilesLocal = v;
