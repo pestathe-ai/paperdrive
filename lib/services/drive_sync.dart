@@ -377,6 +377,40 @@ class DriveSync {
     return created.id!;
   }
 
+  /// Mette nel cestino di Drive la cartella [path] dell'archivio, solo se è
+  /// vuota (i file dell'app sono già stati spostati; un file tuo la fa
+  /// restare). Vero se l'ha tolta.
+  Future<bool> trashFolderIfEmpty({required String? folderId, required List<String> path}) => _withApi((api) async {
+        if (path.isEmpty) return false;
+        var parent = folderId ?? await _ownFolder(api);
+        for (final seg in path) {
+          final res = await api.files.list(
+            q: "'${_q(parent)}' in parents and mimeType = '$folderMime' and trashed = false",
+            spaces: 'drive',
+            orderBy: 'createdTime',
+            pageSize: 1000,
+            $fields: 'files(id,name)',
+          );
+          final match = (res.files ?? const <drive.File>[]).where((f) => f.id != null && folderKey(f.name ?? '') == folderKey(seg));
+          if (match.isEmpty) return false;
+          parent = match.first.id!;
+        }
+        // Vuota anche nelle sottocartelle: si controlla tutto l'albero.
+        Future<bool> empty(String id) async {
+          final inside = await _listAll(api, "'${_q(id)}' in parents and trashed = false");
+          for (final f in inside) {
+            if (f.mimeType != folderMime) return false;
+            if (!await empty(f.id!)) return false;
+          }
+          return true;
+        }
+
+        if (!await empty(parent)) return false;
+        await api.files.update(drive.File()..trashed = true, parent, $fields: 'id');
+        _folders.clear();
+        return true;
+      });
+
   /// Ripara le cartelle dell'archivio: unisce quelle con lo stesso nome
   /// nello stesso posto (spostando il contenuto nella più vecchia). Restituisce quante cartelle ha sistemato.
   /// [generated]: nomi di cartelle che crea l'app (categorie, persone,

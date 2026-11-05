@@ -777,6 +777,56 @@ class AppState extends ChangeNotifier {
     changed();
   }
 
+  /// I documenti che stanno nella cartella [path] (anche nelle sottocartelle).
+  List<Document> docsInFolder(List<String> path) => [
+        for (final d in archive.activeDocuments)
+          if (_under(drivePath(archive, d).$1, path)) d,
+      ];
+
+  static bool _under(List<String> f, List<String> path) {
+    if (f.length < path.length) return false;
+    for (var i = 0; i < path.length; i++) {
+      if (folderKey(f[i]) != folderKey(path[i])) return false;
+    }
+    return true;
+  }
+
+  /// Sposta tutta la cartella [from] dentro [to] (le sottocartelle restano
+  /// com'erano dentro). Vale come correzione: l'app impara. Poi la cartella
+  /// vecchia, se resta vuota, va nel cestino di Drive.
+  Future<int> moveFolder(List<String> from, String to) async {
+    var n = 0;
+    for (final d in docsInFolder(from)) {
+      final rest = drivePath(archive, d).$1.sublist(from.length);
+      if (setFolder(d, [to, from.last, ...rest].join('/')).isNotEmpty) n++;
+    }
+    await _dropDriveFolder(from);
+    return n;
+  }
+
+  /// Elimina la cartella: i suoi documenti vanno nel cestino dell'app
+  /// (recuperabili) e la cartella su Drive, rimasta vuota, nel cestino di Drive.
+  Future<int> deleteFolder(List<String> path) async {
+    final docs = docsInFolder(path);
+    moveToTrash(docs);
+    await _dropDriveFolder(path);
+    return docs.length;
+  }
+
+  Future<void> _dropDriveFolder(List<String> path) async {
+    if (!settings.driveEnabled || readOnly) return;
+    try {
+      // Prima i file si spostano (sincronizzazione), poi la cartella vuota si toglie.
+      await syncNow(silent: true);
+      while (syncing) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      await drive.trashFolderIfEmpty(folderId: _folder, path: path);
+    } catch (_) {
+      // Riprova il riordino settimanale.
+    }
+  }
+
   void restore(Iterable<Document> docs) {
     for (final d in docs) {
       d

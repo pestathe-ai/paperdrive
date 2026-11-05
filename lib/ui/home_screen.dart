@@ -10,6 +10,7 @@ import 'ask_screen.dart';
 import 'document_screen.dart';
 import 'drive_import_screen.dart';
 import 'filter_sheet.dart';
+import 'folder_picker.dart';
 import 'mail_screen.dart';
 import 'manage_screen.dart';
 import 'organize_screen.dart';
@@ -734,14 +735,86 @@ class _HomeScreenState extends State<HomeScreen> {
               color: dated.hasMatch(n) ? null : brandBlue,
             ),
             title: Text(label(n), style: const TextStyle(fontWeight: FontWeight.w600)),
-            trailing: Text('${subfolders[n]}', style: theme.textTheme.labelLarge),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('${subfolders[n]}', style: theme.textTheme.labelLarge),
+                if (!app.readOnly)
+                  PopupMenuButton<String>(
+                    tooltip: 'Azioni sulla cartella',
+                    onSelected: (v) => _folderAction(app, [...folder, label(n)], v),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'move', child: Text('Sposta in un\'altra cartella…')),
+                      PopupMenuItem(value: 'delete', child: Text('Elimina cartella')),
+                    ],
+                  ),
+              ],
+            ),
             onTap: () => _openFolder([...folder, label(n)]),
+            onLongPress: app.readOnly ? null : () => _folderAction(app, [...folder, label(n)], 'menu'),
           ),
         if (names.isNotEmpty && here.isNotEmpty) const Divider(height: 1),
         for (final d in here) _docTile(app, d),
       ],
       ),
     );
+  }
+
+  /// Sposta o elimina una cartella dell'archivio.
+  Future<void> _folderAction(AppState app, List<String> path, String action) async {
+    var a = action;
+    if (a == 'menu') {
+      final picked = await showModalBottomSheet<String>(
+        context: context,
+        builder: (c) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(title: Text(path.last, style: const TextStyle(fontWeight: FontWeight.w700))),
+              ListTile(
+                leading: const Icon(Icons.drive_file_move_outline),
+                title: const Text('Sposta in un\'altra cartella…'),
+                onTap: () => Navigator.pop(c, 'move'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Elimina cartella'),
+                onTap: () => Navigator.pop(c, 'delete'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (picked == null) return;
+      a = picked;
+    }
+    if (!mounted) return;
+    final count = app.docsInFolder(path).length;
+    if (a == 'delete') {
+      final ok = await confirm(
+        context,
+        title: 'Eliminare "${path.last}"?',
+        message: count == 0
+            ? 'La cartella è vuota.'
+            : 'I $count documenti che contiene vanno nel cestino dell\'app (recuperabili). '
+                'La cartella su Drive va nel cestino di Drive. Eventuali file tuoi che non sono '
+                'documenti dell\'archivio restano e la cartella non viene tolta.',
+        ok: 'Elimina',
+        danger: true,
+      );
+      if (!ok) return;
+      final n = await app.deleteFolder(path);
+      if (mounted) showMessage(context, 'Cartella eliminata ($n documenti nel cestino)');
+    } else if (a == 'move') {
+      final to = await pickFolder(context, app);
+      if (to == null || !mounted) return;
+      if (to.toLowerCase().startsWith(path.join('/').toLowerCase())) {
+        showMessage(context, 'Non si può spostare una cartella dentro sé stessa');
+        return;
+      }
+      final n = await app.moveFolder(path, to);
+      if (mounted) showMessage(context, 'Spostati $n documenti in $to/${path.last}');
+    }
   }
 
   Drawer _drawer(AppState app) {
