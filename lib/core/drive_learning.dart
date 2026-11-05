@@ -161,11 +161,10 @@ List<String> applyFolderCorrection(Archive a, Document d, {List<String>? folders
         final p = personOf(s);
         if (p != null) {
           person = p.name;
-          // Dopo la categoria, o in una categoria di tutta la casa (dove la
-          // persona non compare nel percorso), il nome resta scritto per
-          // esteso: "Casa/Via alessandrina/…" deve restare così.
-          final shared = a.config.sharedTypeIds.contains(d.typeId);
-          if (shared || (catIdx >= 0 && i > catIdx)) {
+          // In una categoria di tutta la casa la persona non compare nel
+          // percorso: il nome resta scritto per esteso ("Casa/Via
+          // alessandrina/…" deve restare così).
+          if (a.config.sharedTypeIds.contains(d.typeId)) {
             template.add(s);
             custom.add(s);
           } else {
@@ -243,7 +242,9 @@ int fixPersonInPaths(Archive a) {
     final counts = <String, int>{};
     for (final d in a.activeDocuments) {
       final who = d.customFields[personFieldId] ?? '';
-      if (d.storagePathId == p.id && who.isNotEmpty) counts[who] = (counts[who] ?? 0) + 1;
+      if (d.storagePathId == p.id && who.isNotEmpty && a.config.sharedTypeIds.contains(d.typeId)) {
+        counts[who] = (counts[who] ?? 0) + 1;
+      }
     }
     if (counts.isEmpty) continue;
     final who = counts.entries.reduce((x, y) => x.value >= y.value ? x : y).key;
