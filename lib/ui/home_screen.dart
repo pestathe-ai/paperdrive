@@ -38,6 +38,22 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Cartella aperta nell'archivio.
   List<String> folder = const [];
 
+  /// Cartelle da cui sei tornato indietro (per "avanti" con lo swipe).
+  final List<List<String>> _forward = [];
+
+  void _openFolder(List<String> f) => setState(() {
+        _forward.clear();
+        folder = f;
+      });
+
+  void _folderUp() {
+    if (folder.isEmpty) return;
+    setState(() {
+      _forward.add(folder);
+      folder = folder.sublist(0, folder.length - 1);
+    });
+  }
+
   AppState? _app;
 
   @override
@@ -243,10 +259,17 @@ class _HomeScreenState extends State<HomeScreen> {
         filter.mineOnly;
 
     final searching = filter.query.isNotEmpty || filterActive || activeViewId != null;
+    // Indietro nell'archivio a cartelle: prima si risale di cartella.
+    final inFolder = !searching && tab == 1 && folder.isNotEmpty;
     return PopScope(
-      canPop: !selecting,
+      canPop: !selecting && !inFolder,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) setState(selected.clear);
+        if (didPop) return;
+        if (selecting) {
+          setState(selected.clear);
+        } else {
+          _folderUp();
+        }
       },
       child: Scaffold(
         drawer: selecting ? null : _drawer(app),
@@ -657,7 +680,17 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     here.sort((x, y) => y.created.compareTo(x.created));
     final theme = Theme.of(context);
-    return ListView(
+    // Scorri verso destra: cartella precedente; verso sinistra: avanti.
+    return GestureDetector(
+      onHorizontalDragEnd: (e) {
+        final v = e.primaryVelocity ?? 0;
+        if (v > 300) {
+          _folderUp();
+        } else if (v < -300 && _forward.isNotEmpty) {
+          setState(() => folder = _forward.removeLast());
+        }
+      },
+      child: ListView(
       padding: const EdgeInsets.only(bottom: 96),
       children: [
         SingleChildScrollView(
@@ -668,7 +701,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ActionChip(
                 avatar: const Icon(Icons.home_outlined, size: 18),
                 label: const Text('Archivio'),
-                onPressed: folder.isEmpty ? null : () => setState(() => folder = const []),
+                onPressed: folder.isEmpty ? null : () => _openFolder(const []),
               ),
               for (var i = 0; i < folder.length; i++) ...[
                 const Icon(Icons.chevron_right, size: 18),
@@ -676,7 +709,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: Text(folder[i]),
                   onPressed: i == folder.length - 1
                       ? null
-                      : () => setState(() => folder = folder.sublist(0, i + 1)),
+                      : () => _openFolder(folder.sublist(0, i + 1)),
                 ),
               ],
             ],
@@ -695,11 +728,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             title: Text(n, style: const TextStyle(fontWeight: FontWeight.w600)),
             trailing: Text('${subfolders[n]}', style: theme.textTheme.labelLarge),
-            onTap: () => setState(() => folder = [...folder, n]),
+            onTap: () => _openFolder([...folder, n]),
           ),
         if (names.isNotEmpty && here.isNotEmpty) const Divider(height: 1),
         for (final d in here) _docTile(app, d),
       ],
+      ),
     );
   }
 

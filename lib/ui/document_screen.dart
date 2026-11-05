@@ -15,6 +15,7 @@ import '../core/drive_learning.dart' show folderOf;
 import '../core/models.dart';
 import '../state/app_state.dart';
 import '../core/organize.dart' show drivePath, similarDocuments;
+import 'folder_picker.dart';
 import 'pages_screen.dart';
 import 'widgets.dart';
 
@@ -406,13 +407,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
           onTap: app.readOnly
               ? null
               : () async {
-                  final v = await askText(
-                    context,
-                    title: 'Cartella su Drive',
-                    label: 'Es. Casa/Box via Roma/2026',
-                    initial: folderOf(a, d),
-                  );
-                  if (v == null) return;
+                  // Si sceglie tra le cartelle che esistono già (o se ne crea una).
+                  final v = await pickFolder(context, app, doc: d);
+                  if (v == null || !context.mounted) return;
                   final changes = app.setFolder(d, v);
                   if (context.mounted) {
                     showMessage(

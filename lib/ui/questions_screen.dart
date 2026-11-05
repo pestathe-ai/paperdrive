@@ -4,6 +4,7 @@ import '../core/assistant.dart';
 import '../core/models.dart';
 import '../state/app_state.dart';
 import 'document_screen.dart';
+import 'folder_picker.dart';
 import 'widgets.dart';
 
 /// I dubbi dell'app: invece di sbagliare cartella, chiede. Ogni risposta
@@ -102,6 +103,13 @@ class ReviewCard extends StatelessWidget {
                       }),
                       onPressed: app.readOnly ? null : () => app.answerQuestion(q, o),
                     ),
+                  // Nessuna delle proposte: si sceglie tra tutte le cartelle.
+                  if (q.kind == QuestionKind.folder)
+                    ActionChip(
+                      avatar: const Icon(Icons.folder_open, size: 18),
+                      label: const Text('Altra cartella…'),
+                      onPressed: app.readOnly ? null : () => moveToPickedFolder(context, app, d),
+                    ),
                 ],
               ),
             ] else
@@ -113,6 +121,11 @@ class ReviewCard extends StatelessWidget {
                     onPressed: app.readOnly ? null : () => app.markReviewed([d]),
                   ),
                   const SizedBox(width: 8),
+                  TextButton.icon(
+                    icon: const Icon(Icons.drive_file_move_outline, size: 18),
+                    label: const Text('Cartella'),
+                    onPressed: app.readOnly ? null : () => moveToPickedFolder(context, app, d),
+                  ),
                   TextButton(
                     onPressed: () => Navigator.push(
                       context,
