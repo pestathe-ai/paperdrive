@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:paperdrive/core/ai.dart';
 import 'package:paperdrive/core/amounts.dart';
 import 'package:paperdrive/core/archive.dart';
 import 'package:paperdrive/core/drive_learning.dart';
@@ -229,5 +230,18 @@ void main() {
       expect(fixPersonInPaths(a), 1);
       expect(drivePath(a, d).$1, ['Casa', 'Via Alessandrina', 'Lavori condominiali', '2026', 'Box']);
     });
+  });
+
+  test('l\'AI non cambia una categoria imparata e non ne crea di nuove quando ci sono già esempi', () {
+    final a = Archive.starter();
+    final t730 = NamedEntity(name: '730', algorithm: MatchAlgorithm.none);
+    a.types[t730.id] = t730;
+    final d = Document(title: 'Scontrino', content: 'farmacia ticket farmaco', typeId: t730.id);
+    a.documents[d.id] = d;
+    final before = a.types.length;
+    applyAiResult(a, d, AiResult(category: 'Farmacia'), retitle: false, keepType: true, newCategories: false);
+    expect(d.typeId, t730.id);
+    applyAiResult(a, d, AiResult(category: 'Farmacia'), retitle: false, newCategories: false);
+    expect(a.types.length, before);
   });
 }

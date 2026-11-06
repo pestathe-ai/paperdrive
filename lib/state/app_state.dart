@@ -576,9 +576,21 @@ class AppState extends ChangeNotifier {
       ));
     }
     applyMatches(archive, doc, classifier: classifier, meaning: meaning);
-    applyKindCategory(archive, doc);
+    // Se i documenti che hai già sistemato dicono chiaramente la categoria
+    // (es. gli scontrini della farmacia nella tua "730"), quella resta: né
+    // il tipo di documento riconosciuto né l'AI la cambiano.
+    final learned = classifier?.type(matchText(doc), meaning: meaning);
+    final trustLearned = learned != null && learned.confidence >= 0.45 && doc.typeId == learned.label;
+    if (!trustLearned) applyKindCategory(archive, doc);
     _guessCorrespondent(doc);
-    if (ai != null) applyAiResult(archive, doc, ai, retitle: false);
+    if (ai != null) {
+      applyAiResult(archive, doc, ai,
+          retitle: false,
+          keepType: trustLearned,
+          // Nuove categorie dall'AI solo all'inizio, quando l'archivio non ha
+          // ancora abbastanza esempi: poi si usano le tue.
+          newCategories: (classifier?.trainedOn ?? 0) < Learner.minTraining);
+    }
     fillAmount(doc, ai: ai?.amount);
     final title = autoTitle(archive, doc);
     if (title != null) doc.title = title;

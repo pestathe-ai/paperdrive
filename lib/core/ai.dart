@@ -290,14 +290,16 @@ List<String> applyAiResult(
   Document d,
   AiResult r, {
   bool retitle = true,
+  bool keepType = false,
+  bool newCategories = true,
 }) {
   final changed = <String>[];
 
   // Un documento simile corretto a mano dall'utente vale più dell'AI.
   final (example, score) = correctedExample(a, d);
-  final exType = a.type(example?.typeId);
+  final exType = keepType ? null : a.type(example?.typeId);
   final exSender = score >= 0.6 ? a.correspondent(example?.correspondentId) : null;
-  final keepType = exType != null;
+  keepType = keepType || exType != null;
   final keepSender = exSender != null;
   if (exType != null && d.typeId != exType.id) {
     d.typeId = exType.id;
@@ -311,7 +313,7 @@ List<String> applyAiResult(
   // Categoria.
   if (r.category != null && !keepType && !_userRule(a.type(d.typeId), d)) {
     var t = findByName(a.activeTypes, r.category!);
-    if (t == null && r.category!.split(' ').length <= 3) {
+    if (t == null && newCategories && r.category!.split(' ').length <= 3) {
       final name = r.category![0].toUpperCase() + r.category!.substring(1);
       t = NamedEntity(name: name, algorithm: MatchAlgorithm.auto);
       a.types[t.id] = t;
