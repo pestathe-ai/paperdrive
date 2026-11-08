@@ -10,6 +10,11 @@ MANIFEST=android/app/src/main/AndroidManifest.xml
 grep -q 'android.permission.INTERNET' "$MANIFEST" || \
   sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$MANIFEST"
 sed -i 's#android:label="paperdrive"#android:label="D. PaperLink Lab"#' "$MANIFEST"
+# Una sola schermata dell'app per tutte le condivisioni: un secondo
+# documento condiviso mentre il primo è in lavorazione si mette in coda,
+# invece di aprire un'altra copia dell'app che interrompe la prima.
+sed -i 's#android:launchMode="singleTop"#android:launchMode="singleTask"#' "$MANIFEST"
+grep -q 'android:launchMode="singleTask"' "$MANIFEST" || { echo "launchMode non impostato"; grep -n launchMode "$MANIFEST"; exit 1; }
 # Niente backup automatico di Android: l'indice contiene il testo dei
 # documenti (anche sanitari) e le password delle caselle email.
 grep -q 'android:allowBackup' "$MANIFEST" || \
