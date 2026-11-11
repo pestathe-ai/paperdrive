@@ -228,6 +228,32 @@ String healthKind(String text) {
 
 /// Assegna persona e, per la sanità, specialità, tipo e percorso. Non
 /// tocca i valori già impostati a mano. Restituisce true se cambia qualcosa.
+final RegExp _taxCode = RegExp(r'\b[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]\b');
+
+/// I codici fiscali scritti nel testo (es. "C.F. Cliente" sugli scontrini).
+Set<String> taxCodes(String text) => {for (final m in _taxCode.allMatches(text.toUpperCase())) m[0]!};
+
+/// La persona a cui appartiene un codice fiscale del documento, imparata
+/// dai documenti in cui la persona l'hai indicata tu (o l'app l'ha
+/// riconosciuta per nome): lo scontrino della farmacia con il tuo codice
+/// fiscale è tuo anche se il nome non c'è.
+String? personFromTaxCode(Archive a, Document d) {
+  final codes = taxCodes(d.content);
+  if (codes.isEmpty) return null;
+  final votes = <String, int>{};
+  for (final o in a.activeDocuments) {
+    if (o.id == d.id || o.inTrash) continue;
+    final who = o.customFields[personFieldId] ?? '';
+    if (who.isEmpty) continue;
+    if (taxCodes(o.content).any(codes.contains)) votes[who] = (votes[who] ?? 0) + 1;
+  }
+  if (votes.isEmpty) return null;
+  final best = votes.entries.reduce((x, y) => x.value >= y.value ? x : y);
+  // Se lo stesso codice compare con persone diverse, decide la maggioranza netta.
+  final total = votes.values.fold(0, (s, v) => s + v);
+  return best.value * 2 > total ? best.key : null;
+}
+
 bool applyPeople(Archive a, Document d, {String? aiPerson, String? aiSpecialty, String? aiHealthKind}) {
   ensurePeopleEntities(a);
   var changed = false;
@@ -249,7 +275,7 @@ bool applyPeople(Archive a, Document d, {String? aiPerson, String? aiSpecialty, 
       }
     }
   }
-  setField(personFieldId, (detectPerson(people, d.content) ?? fromAi)?.name);
+  setField(personFieldId, (detectPerson(people, d.content) ?? fromAi)?.name ?? personFromTaxCode(a, d));
 
   if (d.typeId != healthTypeId && d.storagePathId == healthPathId) {
     d.storagePathId = null;

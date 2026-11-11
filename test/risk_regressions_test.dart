@@ -244,4 +244,17 @@ void main() {
     applyAiResult(a, d, AiResult(category: 'Farmacia'), retitle: false, newCategories: false);
     expect(a.types.length, before);
   });
+
+  test('la persona si riconosce dal codice fiscale imparato dai documenti precedenti', () {
+    final a = Archive.starter();
+    a.config.people.add(Person(name: 'Domenico'));
+    ensurePeopleEntities(a);
+    final old = Document(title: 'Scontrino 1', content: 'FARMACIA ESEMPIO C.F. Cliente RSSMRA80A01H501U totale 10,00')
+      ..customFields[personFieldId] = 'Domenico';
+    a.documents[old.id] = old;
+    final d = Document(title: 'Scontrino 2', content: 'ALTRA FARMACIA C.F. Cliente RSSMRA80A01H501U totale 5,00');
+    a.documents[d.id] = d;
+    applyPeople(a, d);
+    expect(d.customFields[personFieldId], 'Domenico');
+  });
 }

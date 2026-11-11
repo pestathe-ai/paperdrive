@@ -709,6 +709,65 @@ class DriveSync {
         } catch (_) {}
       }
 
+      // Spostamenti e nomi cambiati a mano su Drive: correzioni da imparare.
+      // Prima dei caricamenti: un file nuovo dello stesso documento (es. il
+      // PDF/A) va già nella cartella scelta da te, non in quella vecchia.
+      final outside = <String>{};
+      if (canWrite) {
+        for (final d in merged.documents.values) {
+          if (d.deleted) continue;
+          // Il file che hai spostato può essere l'originale anche se nel
+          // frattempo è pronta la versione PDF/A: si guardano tutti.
+          _Remote? r;
+          for (final n in {d.primaryFile, ...d.fileNames}) {
+            final c = remoteFiles[n];
+            if (c == null || !c.tagged) continue;
+            final pn = c.props['pdName'], pp = c.props['pdParent'];
+            if (pn == null || pp == null || c.parents.isEmpty) continue;
+            r = c;
+            if (c.name != pn || !c.parents.contains(pp)) break;
+          }
+          if (r == null) continue;
+          final lastName = r.props['pdName'];
+          final lastParent = r.props['pdParent'];
+          if (lastName == null || lastParent == null || r.parents.isEmpty) continue;
+          final renamed = r.name != lastName;
+          final moved = !r.parents.contains(lastParent);
+          try {
+            // Cartella intera spostata o rinominata (es. "Lavori condominiali"
+            // messa dentro "Via alessandrina"): il file è nella stessa
+            // cartella di prima, ma il percorso è cambiato.
+            List<String>? actual;
+            var folderChanged = false;
+            final lastPath = r.props['pdPath'];
+            if (!moved && lastPath != null) {
+              actual = await _pathFromRoot(api, root, r.parents.first);
+              folderChanged = actual != null && _pathKey(actual) != lastPath && _pathKeyOld(actual) != lastPath;
+            }
+            if (!renamed && !moved && !folderChanged) continue;
+            final folders = moved ? await _pathFromRoot(api, root, r.parents.first) : (folderChanged ? actual : null);
+            if (moved && folders == null) {
+              // Portato fuori dalla cartella dell'archivio: resta dove l'hai messo.
+              outside.add(d.id);
+              continue;
+            }
+            final before = d.toJson();
+            final changes = applyFolderCorrection(
+              merged,
+              d,
+              folders: folders,
+              fileName: renamed ? r.name : null,
+            );
+            if (changes.isNotEmpty && logChanges(merged, before, d, via: 'Google Drive')) {
+              d.touch();
+              learned++;
+            }
+          } catch (_) {
+            // Una cartella illeggibile non blocca la sincronizzazione.
+          }
+        }
+      }
+
       final plan = planFiles(
         merged,
         localFiles: await storage.localFileNames(),
@@ -762,53 +821,6 @@ class DriveSync {
           if (await thumb.exists()) await thumb.delete();
         }
         removed++;
-      }
-
-      // Spostamenti e nomi cambiati a mano su Drive: correzioni da imparare.
-      final outside = <String>{};
-      if (canWrite) {
-        for (final d in merged.documents.values) {
-          if (d.deleted) continue;
-          final r = remoteFiles[d.primaryFile];
-          if (r == null || !r.tagged) continue;
-          final lastName = r.props['pdName'];
-          final lastParent = r.props['pdParent'];
-          if (lastName == null || lastParent == null || r.parents.isEmpty) continue;
-          final renamed = r.name != lastName;
-          final moved = !r.parents.contains(lastParent);
-          try {
-            // Cartella intera spostata o rinominata (es. "Lavori condominiali"
-            // messa dentro "Via alessandrina"): il file è nella stessa
-            // cartella di prima, ma il percorso è cambiato.
-            List<String>? actual;
-            var folderChanged = false;
-            final lastPath = r.props['pdPath'];
-            if (!moved && lastPath != null) {
-              actual = await _pathFromRoot(api, root, r.parents.first);
-              folderChanged = actual != null && _pathKey(actual) != lastPath && _pathKeyOld(actual) != lastPath;
-            }
-            if (!renamed && !moved && !folderChanged) continue;
-            final folders = moved ? await _pathFromRoot(api, root, r.parents.first) : (folderChanged ? actual : null);
-            if (moved && folders == null) {
-              // Portato fuori dalla cartella dell'archivio: resta dove l'hai messo.
-              outside.add(d.id);
-              continue;
-            }
-            final before = d.toJson();
-            final changes = applyFolderCorrection(
-              merged,
-              d,
-              folders: folders,
-              fileName: renamed ? r.name : null,
-            );
-            if (changes.isNotEmpty && logChanges(merged, before, d, via: 'Google Drive')) {
-              d.touch();
-              learned++;
-            }
-          } catch (_) {
-            // Una cartella illeggibile non blocca la sincronizzazione.
-          }
-        }
       }
 
       // Ogni file nella sua cartella (categoria/anno) e con il nome giusto.
