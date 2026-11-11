@@ -112,6 +112,11 @@ for G in android/app/build.gradle.kts android/app/build.gradle; do
     # shared_preferences) e rompe l'app solo nella versione release.
     sed -i -E 's/^( *)signingConfig = signingConfigs\.getByName\("debug"\)/\1signingConfig = signingConfigs.getByName("debug")\n\1isMinifyEnabled = false\n\1isShrinkResources = false/' "$G"
     grep -q 'isMinifyEnabled = false' "$G" || { echo "minify non disattivato"; cat "$G"; exit 1; }
+    # Il controllo "lint" di Android si blocca su alcune librerie
+    # (url_launcher): non serve per costruire l'APK.
+    if ! grep -q 'checkReleaseBuilds' "$G"; then
+      printf '\nandroid {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }\n}\n' >> "$G"
+    fi
   fi
 done
 
