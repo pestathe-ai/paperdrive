@@ -213,7 +213,13 @@ class Storage {
       // Drive: si segnano come vecchissime, così vince l'indice di Drive.
       final a = Archive.starter();
       a.config.modified = 0;
-      for (final e in [...a.types.values, ...a.tags.values, ...a.correspondents.values, ...a.storagePaths.values, ...a.fields.values]) {
+      for (final dynamic e in <Object>[
+        ...a.types.values,
+        ...a.tags.values,
+        ...a.correspondents.values,
+        ...a.storagePaths.values,
+        ...a.fields.values,
+      ]) {
         e.modified = 0;
       }
       return a;
