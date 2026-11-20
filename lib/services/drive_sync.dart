@@ -284,6 +284,97 @@ class DriveSync {
     return (out, index);
   }
 
+  /// Cartella delle copie giornaliere dell'indice.
+  static const String backupFolderName = 'Backup indice';
+
+  static bool _validIndex(String raw) {
+    if (raw.trim().isEmpty) return false;
+    try {
+      final j = jsonDecode(raw);
+      return j is Map && j['documents'] is List;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// L'indice su Drive; se è vuoto o rovinato, l'ultima versione buona
+  /// dalla cronologia delle versioni di Drive o dalle copie giornaliere.
+  /// Null se non ce n'è nessuna (allora vale l'indice del telefono).
+  Future<String?> _readIndex(drive.DriveApi api, String id, String root, void Function(String)? status) async {
+    final raw = utf8.decode(await _download(api, id), allowMalformed: true);
+    if (_validIndex(raw)) return raw;
+    status?.call('Indice su Drive vuoto o rovinato: recupero dell\'ultima versione buona…');
+    try {
+      final revs = (await api.revisions.list(id, pageSize: 200, $fields: 'revisions(id,modifiedTime,size)')).revisions ??
+          const <drive.Revision>[];
+      final sorted = [...revs]..sort((a, b) => (b.modifiedTime ?? DateTime(0)).compareTo(a.modifiedTime ?? DateTime(0)));
+      for (final r in sorted.take(40)) {
+        if (r.id == null || (int.tryParse(r.size ?? '') ?? 1) == 0) continue;
+        final media = await api.revisions.get(id, r.id!, downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
+        final bytes = <int>[];
+        await for (final c in media.stream) {
+          bytes.addAll(c);
+        }
+        final s = utf8.decode(bytes, allowMalformed: true);
+        if (_validIndex(s)) return s;
+      }
+    } catch (_) {}
+    try {
+      final folder = await _findChildFolder(api, root, backupFolderName);
+      if (folder != null) {
+        final copies = await _listAll(api, "'${_q(folder)}' in parents and trashed = false");
+        copies.sort((a, b) => (b.name ?? '').compareTo(a.name ?? ''));
+        for (final c in copies) {
+          if (c.id == null) continue;
+          final s = utf8.decode(await _download(api, c.id!), allowMalformed: true);
+          if (_validIndex(s)) return s;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<String?> _findChildFolder(drive.DriveApi api, String parent, String name) async {
+    final res = await api.files.list(
+      q: "'${_q(parent)}' in parents and name = '${_q(name)}' and mimeType = '$folderMime' and trashed = false",
+      spaces: 'drive',
+      $fields: 'files(id)',
+    );
+    return (res.files ?? const <drive.File>[]).firstOrNull?.id;
+  }
+
+  /// Copia giornaliera dell'indice in "Backup indice" (copia fatta da Drive,
+  /// niente da caricare). Si tengono le ultime 30.
+  Future<void> _dailyBackup(drive.DriveApi api, String root, String indexId) async {
+    final now = DateTime.now();
+    final day = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final name = 'paperdrive-index $day.json';
+    var folder = await _findChildFolder(api, root, backupFolderName);
+    folder ??= (await api.files.create(
+      drive.File()
+        ..name = backupFolderName
+        ..mimeType = folderMime
+        ..parents = [root],
+      $fields: 'id',
+    ))
+        .id;
+    if (folder == null) return;
+    final copies = await _listAll(api, "'${_q(folder)}' in parents and trashed = false");
+    if (copies.any((c) => c.name == name)) return;
+    await api.files.copy(
+      drive.File()
+        ..name = name
+        ..parents = [folder],
+      indexId,
+      $fields: 'id',
+    );
+    final old = copies.where((c) => (c.name ?? '').startsWith('paperdrive-index ')).toList()
+      ..sort((a, b) => (b.name ?? '').compareTo(a.name ?? ''));
+    for (final c in old.skip(29)) {
+      if (c.id != null) await api.files.update(drive.File()..trashed = true, c.id!, $fields: 'id');
+    }
+  }
+
   Future<List<int>> _download(drive.DriveApi api, String id) async {
     final media = await api.files.get(
       id,
@@ -649,8 +740,13 @@ class DriveSync {
       Archive remote = Archive();
       String? remoteRaw;
       if (index != null) {
-        remoteRaw = utf8.decode(await _download(api, index.id));
-        remote = Archive.fromJson((jsonDecode(remoteRaw) as Map).cast<String, dynamic>());
+        // Indice vuoto (0 KB) o rovinato: non si blocca tutto, si recupera
+        // l'ultima versione buona (cronologia di Drive o copie di backup) e
+        // poi si riscrive l'indice completo.
+        remoteRaw = await _readIndex(api, index.id, root, status);
+        if (remoteRaw != null) {
+          remote = Archive.fromJson((jsonDecode(remoteRaw) as Map).cast<String, dynamic>());
+        }
       }
       final (merged, _) = mergeArchives(current, remote);
       current = merged;
@@ -898,22 +994,34 @@ class DriveSync {
       }
       status?.call('Salvataggio dell\'indice su Drive…');
       final bytes = utf8.encode(mergedRaw);
-      if (index == null) {
-        await api.files.create(
-          drive.File()
-            ..name = indexName
-            ..parents = [root],
-          uploadMedia: _media(bytes, 'application/json'),
-          $fields: 'id',
-        );
-      } else {
-        await api.files.update(
-          drive.File(),
-          index.id,
-          uploadMedia: _media(bytes, 'application/json'),
-          $fields: 'id',
-        );
+      // Si controlla che su Drive sia arrivato tutto (stessa dimensione):
+      // un caricamento interrotto non deve lasciare un indice vuoto.
+      for (var tries = 0;; tries++) {
+        final drive.File saved;
+        if (index == null) {
+          saved = await api.files.create(
+            drive.File()
+              ..name = indexName
+              ..parents = [root],
+            uploadMedia: _media(bytes, 'application/json'),
+            $fields: 'id,size',
+          );
+          if (saved.id != null) index = _Remote(saved.id!, indexName, [root], null, false);
+        } else {
+          saved = await api.files.update(
+            drive.File(),
+            index.id,
+            uploadMedia: _media(bytes, 'application/json'),
+            $fields: 'id,size',
+          );
+        }
+        if (int.tryParse(saved.size ?? '') == bytes.length) break;
+        if (tries >= 2) throw StateError('Indice su Drive non salvato per intero (${saved.size} di ${bytes.length} byte)');
       }
+      // Una copia al giorno nella cartella "Backup indice" (le ultime 30).
+      try {
+        await _dailyBackup(api, root, index!.id);
+      } catch (_) {}
       break;
     }
 

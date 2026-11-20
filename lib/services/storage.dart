@@ -209,6 +209,14 @@ class Storage {
       if (await _indexFile.exists()) {
         await _indexFile.copy('${_indexFile.path}.broken');
       }
+      // Le impostazioni "nuove" non devono prevalere su quelle salvate su
+      // Drive: si segnano come vecchissime, così vince l'indice di Drive.
+      final a = Archive.starter();
+      a.config.modified = 0;
+      for (final e in [...a.types.values, ...a.tags.values, ...a.correspondents.values, ...a.storagePaths.values, ...a.fields.values]) {
+        e.modified = 0;
+      }
+      return a;
     }
     return Archive.starter();
   }
